@@ -1,1 +1,9 @@
 .atl/
+
+node_modules/
+coverage/
+dist/
+logs/
+*.tsbuildinfo
+com.gentleman.ai-deck.sdPlugin/bin/
+*.streamDeckPlugin
