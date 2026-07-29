@@ -1,0 +1,43 @@
+{
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
+  "UUID": "com.gentleman.ai-deck",
+  "Name": "AI Deck",
+  "Version": "0.1.0.0",
+  "Author": "Gentleman Programming",
+  "Description": "Reserved local session slots scaffold for Stream Deck.",
+  "Category": "AI Deck",
+  "Icon": "assets/plugin",
+  "CodePath": "bin/plugin.js",
+  "SDKVersion": 2,
+  "Software": {
+    "MinimumVersion": "7.1"
+  },
+  "OS": [
+    {
+      "Platform": "mac",
+      "MinimumVersion": "12"
+    }
+  ],
+  "Nodejs": {
+    "Version": "24"
+  },
+  "Actions": [
+    {
+      "Name": "Reserved Session Slot",
+      "UUID": "com.gentleman.ai-deck.session-slot",
+      "DeviceType": 0,
+      "Icon": "assets/action",
+      "Tooltip": "Reserved scaffold slot; session status behavior is not implemented yet.",
+      "Controllers": [
+        "Keypad"
+      ],
+      "SupportedInMultiActions": false,
+      "States": [
+        {
+          "Image": "assets/key",
+          "TitleAlignment": "middle"
+        }
+      ]
+    }
+  ]
+}

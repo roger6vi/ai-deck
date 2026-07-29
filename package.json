@@ -9,6 +9,7 @@
   "packageManager": "npm@11.16.0",
   "scripts": {
     "build": "rollup -c",
+    "assets:build": "node scripts/build-assets.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
