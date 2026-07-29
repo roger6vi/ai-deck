@@ -1,4 +1,4 @@
-name: Verify scaffold
+name: Verify delivery
 
 on:
   pull_request:
@@ -17,8 +17,4 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npm test
-      - run: npm run assets:build
-      - run: git diff --exit-code -- com.gentleman.ai-deck.sdPlugin/assets
-      - run: npm run typecheck
-      - run: npm run build
+      - run: npm run verify

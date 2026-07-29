@@ -5,13 +5,13 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { BlobReader, TextWriter, ZipReader } from "@zip.js/zip.js";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { buildProfile } from "../scripts/build-profile.mjs";
 import {
   PROFILE_FILE,
   SESSION_SLOT_ACTION_UUID,
-  readProfileArchive,
 } from "../scripts/profile-contract.mjs";
 import { SESSION_SLOT_ACTION_UUID as runtimeActionUuid } from "../src/actions/session-slot.constants";
 
@@ -107,6 +107,27 @@ function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+async function readTrustedGeneratedArchive(bytes: Uint8Array) {
+  const archiveBytes = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  const archive = new ZipReader(new BlobReader(new Blob([archiveBytes], { type: "application/zip" })));
+  try {
+    const entries = await archive.getEntries();
+    const names = entries.map((entry) => entry.filename);
+    expect(names).toEqual(EXPECTED_ARCHIVE_PATHS);
+    const manifests = await Promise.all(
+      EXPECTED_ARCHIVE_PATHS.map(async (name) => {
+        const entry = entries.find((candidate) => candidate.filename === name);
+        if (!entry || entry.directory) throw new Error(`Trusted profile is missing ${name}.`);
+        return JSON.parse(await entry.getData(new TextWriter()));
+      }),
+    );
+
+    return { manifests, names };
+  } finally {
+    await archive.close();
+  }
+}
+
 async function generateIsolatedProfile(timeZone?: string): Promise<Buffer> {
   const directory = await mkdtemp(join(tmpdir(), "ai-deck-profile-"));
   temporaryDirectories.push(directory);
@@ -147,14 +168,14 @@ describe("deterministic Local Agent Status profile generation", () => {
         AutoInstall: false,
       },
     ]);
-    const { manifests } = await readProfileArchive(await readFile(PROFILE_FILE));
+    const { manifests } = await readTrustedGeneratedArchive(await readFile(PROFILE_FILE));
     const root = manifests[0] as ProfileRoot;
     expect(manifest.Profiles[0]?.Name).toBe(`Profiles/${root.Name}`);
     expect(PROFILE_FILE).toBe(`com.gentleman.ai-deck.sdPlugin/Profiles/${root.Name}.streamDeckProfile`);
   });
 
   it("writes one Keypad page with exactly five reserved row-zero actions", async () => {
-    const { manifests, names } = await readProfileArchive(await readFile(PROFILE_FILE));
+    const { manifests, names } = await readTrustedGeneratedArchive(await readFile(PROFILE_FILE));
     const root = manifests[0] as ProfileRoot;
     const page = manifests[1];
 

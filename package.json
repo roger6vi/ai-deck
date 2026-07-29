@@ -12,13 +12,18 @@
     "assets:build": "node scripts/build-assets.mjs",
     "profile:build": "node scripts/build-profile.mjs",
     "generate": "npm run assets:build && npm run profile:build",
+    "check:generated": "node scripts/check-generated.mjs",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "validate:plugin": "streamdeck validate com.gentleman.ai-deck.sdPlugin --no-update-check",
+    "audit:production": "npm audit --omit=dev --audit-level=low",
+    "verify": "npm test && npm run typecheck && npm run audit:production && npm run build && npm run generate && npm run check:generated && npm run validate:plugin"
   },
   "dependencies": {
     "@elgato/streamdeck": "2.1.0"
   },
   "devDependencies": {
+    "@elgato/cli": "1.7.4",
     "@rollup/plugin-commonjs": "29.0.3",
     "@rollup/plugin-node-resolve": "16.0.3",
     "@rollup/plugin-typescript": "12.3.0",

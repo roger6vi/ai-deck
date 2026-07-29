@@ -1,12 +1,10 @@
 import { createHash } from "node:crypto";
-import { BlobReader, TextWriter, ZipReader } from "@zip.js/zip.js";
 import pluginManifest from "../com.gentleman.ai-deck.sdPlugin/manifest.json" with { type: "json" };
 // Stream Deck profiles are ZIP files whose root directory ends in .sdProfile.
 const PROFILE_FILE_EXTENSION = ".streamDeckProfile";
 const PROFILE_ARCHIVE_DIRECTORY_EXTENSION = ".sdProfile";
 const PROFILE_MANIFEST_FILE_NAME = "manifest.json";
 const PROFILE_PAGES_DIRECTORY_NAME = "Profiles";
-const ZIP_MIME_TYPE = "application/zip";
 // Page folder names encode the UUID as padded five-hex-digit groups in base 32.
 const FOLDER_HEX_GROUP_PATTERN = /.{5}/g;
 const FOLDER_HEX_GROUP_RADIX = 16;
@@ -57,22 +55,4 @@ export function stableActionId(coordinate) {
     .update(`${SESSION_SLOT_ACTION_UUID}:${coordinate}`)
     .digest("hex");
   return `${hash.slice(...ACTION_ID_HASH_SLICES.timeLow)}-${hash.slice(...ACTION_ID_HASH_SLICES.timeMid)}-${ACTION_ID_UUID_VERSION}${hash.slice(...ACTION_ID_HASH_SLICES.timeHigh)}-${ACTION_ID_UUID_VARIANT}${hash.slice(...ACTION_ID_HASH_SLICES.clockSequence)}-${hash.slice(...ACTION_ID_HASH_SLICES.node)}`;
-}
-
-export async function readProfileArchive(bytes) {
-  const archive = new ZipReader(new BlobReader(new Blob([bytes], { type: ZIP_MIME_TYPE })));
-  const entries = await archive.getEntries();
-  const names = entries.map((entry) => entry.filename);
-  if (names.length !== PROFILE_ENTRY_NAMES.length || !PROFILE_ENTRY_NAMES.every((name) => names.includes(name))) {
-    throw new Error("Profile archive entry topology is invalid.");
-  }
-  const manifests = await Promise.all(
-    PROFILE_ENTRY_NAMES.map(async (name) => {
-      const entry = entries.find((candidate) => candidate.filename === name);
-      if (!entry || !("getData" in entry)) throw new Error(`Profile archive is missing ${name}.`);
-      return JSON.parse(await entry.getData(new TextWriter()));
-    }),
-  );
-  await archive.close();
-  return { manifests, names };
 }
