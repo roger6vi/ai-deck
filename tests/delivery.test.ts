@@ -96,7 +96,6 @@ describe("plugin delivery contract", () => {
     const action = actions[0];
     if (!action) throw new Error("Manifest must contain its reserved action.");
     expect(manifest.CodePath).toBe("bin/plugin.js");
-    expect(manifest).not.toHaveProperty("Profiles");
     expect(actions).toHaveLength(1);
     expect(action).toMatchObject({
       Name: "Reserved Session Slot",

@@ -39,5 +39,14 @@
         }
       ]
     }
+  ],
+  "Profiles": [
+    {
+      "Name": "Profiles/Local Agent Status",
+      "DeviceType": 0,
+      "Readonly": false,
+      "DontAutoSwitchWhenInstalled": false,
+      "AutoInstall": false
+    }
   ]
 }

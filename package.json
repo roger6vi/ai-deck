@@ -10,6 +10,8 @@
   "scripts": {
     "build": "rollup -c",
     "assets:build": "node scripts/build-assets.mjs",
+    "profile:build": "node scripts/build-profile.mjs",
+    "generate": "npm run assets:build && npm run profile:build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
@@ -21,6 +23,7 @@
     "@rollup/plugin-node-resolve": "16.0.3",
     "@rollup/plugin-typescript": "12.3.0",
     "@types/node": "24.13.3",
+    "@zip.js/zip.js": "2.8.34",
     "rollup": "4.62.3",
     "tslib": "2.8.1",
     "typescript": "5.9.3",
