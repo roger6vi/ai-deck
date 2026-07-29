@@ -100,8 +100,8 @@ describe("plugin delivery contract", () => {
     expect(action).toMatchObject({
       Name: "Reserved Session Slot",
       UUID: SESSION_SLOT_ACTION_UUID,
-      DeviceType: 0,
     });
+    expect(action).not.toHaveProperty("DeviceType");
     expect(action).not.toHaveProperty("Profiles");
     const state = (action.States as Array<Record<string, unknown>>)[0];
     if (!state) throw new Error("Reserved action must contain its key state.");
