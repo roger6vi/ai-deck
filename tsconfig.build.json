@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "declaration": false,
+    "noEmit": false,
+    "outDir": "./com.gentleman.ai-deck.sdPlugin/bin"
+  },
+  "include": ["src/**/*.ts"]
+}

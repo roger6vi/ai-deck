@@ -1,0 +1,28 @@
+{
+  "name": "ai-deck",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "packageManager": "npm@11.16.0",
+  "scripts": {
+    "build": "rollup -c",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@elgato/streamdeck": "2.1.0"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "29.0.3",
+    "@rollup/plugin-node-resolve": "16.0.3",
+    "@rollup/plugin-typescript": "12.3.0",
+    "@types/node": "24.13.3",
+    "rollup": "4.62.3",
+    "tslib": "2.8.1",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
+  }
+}
