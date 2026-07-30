@@ -27,7 +27,7 @@
       "Name": "Reserved Session Slot",
       "UUID": "com.gentleman.ai-deck.session-slot",
       "Icon": "assets/action",
-      "Tooltip": "Reserved scaffold slot; session status behavior is not implemented yet.",
+      "Tooltip": "Content-free local session status slot.",
       "Controllers": [
         "Keypad"
       ],
