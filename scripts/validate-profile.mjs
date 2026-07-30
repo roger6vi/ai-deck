@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 import {
   CANONICAL_PROFILE_ARCHIVE_BYTES,
   MAX_CANONICAL_PROFILE_ARCHIVE_BYTES,
-  validateProfileArchive,
 } from "./profile-envelope.mjs";
+import { validateCanonicalProfileTopology } from "./profile-topology.mjs";
 
 const defaultProfilePath = fileURLToPath(
   new URL("../com.gentleman.ai-deck.sdPlugin/Profiles/Local%20Agent%20Status.streamDeckProfile", import.meta.url),
@@ -48,7 +48,7 @@ export async function validateProfileFile(path, operations = FILE_OPERATIONS) {
     if (bytesRead !== CANONICAL_PROFILE_ARCHIVE_BYTES) {
       throw new Error("Profile archive does not match the canonical byte length.");
     }
-    await validateProfileArchive(bytes.subarray(0, bytesRead));
+    await validateCanonicalProfileTopology(bytes.subarray(0, bytesRead));
   } catch (error) {
     primaryError = error;
     throw error;
