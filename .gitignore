@@ -1,9 +1,22 @@
 .atl/
+.env*
+!.env.example
 
 node_modules/
 coverage/
 dist/
+.package-stage/
 logs/
 *.tsbuildinfo
 com.gentleman.ai-deck.sdPlugin/bin/
+com.gentleman.ai-deck.sdPlugin/bin.previous/
+com.gentleman.ai-deck.sdPlugin/bin.next/
 *.streamDeckPlugin
+runtime/
+endpoint.json
+state-snapshot.json
+*.snapshot.json
+*.token
+*.tokens
+*.local
+*.machine.json

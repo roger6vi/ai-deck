@@ -4,15 +4,16 @@ import typescript from "@rollup/plugin-typescript";
 import type { PluginContext } from "rollup";
 
 const pluginDirectory = "com.gentleman.ai-deck.sdPlugin";
+const outputDirectory = process.env.AI_DECK_OUTPUT_DIRECTORY ?? `${pluginDirectory}/bin`;
 
 export default {
   input: "src/plugin.ts",
   output: {
-    file: `${pluginDirectory}/bin/plugin.js`,
+    file: `${outputDirectory}/plugin.js`,
     format: "es",
   },
   plugins: [
-    typescript({ tsconfig: "./tsconfig.build.json" }),
+    typescript({ compilerOptions: { outDir: outputDirectory }, tsconfig: "./tsconfig.build.json" }),
     nodeResolve({ browser: false, exportConditions: ["node"], preferBuiltins: true }),
     commonjs(),
     {

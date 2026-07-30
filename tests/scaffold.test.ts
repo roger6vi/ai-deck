@@ -38,15 +38,30 @@ interface PackageScripts {
 
 describe("Stream Deck plugin scaffold", () => {
   const originalExitCode = process.exitCode;
+  const originalArgv = process.argv;
 
   beforeEach(() => {
     process.exitCode = undefined;
+    process.argv = [
+      process.execPath,
+      "plugin.js",
+      "-port",
+      "0",
+      "-pluginUUID",
+      "test-plugin",
+      "-registerEvent",
+      "registerPlugin",
+      "-info",
+      "{}",
+    ];
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.clearAllMocks();
     vi.resetModules();
   });
 
   afterEach(() => {
     process.exitCode = originalExitCode;
+    process.argv = originalArgv;
     vi.restoreAllMocks();
     vi.resetModules();
   });
@@ -56,7 +71,8 @@ describe("Stream Deck plugin scaffold", () => {
 
     expect(packageManifest.engines.node).toBe("24.x");
     expect(packageManifest.scripts).toMatchObject({
-      build: "rollup -c",
+      build: "node scripts/build-plugin.mjs",
+      "build:rollup": "rollup -c",
       test: "vitest run",
       typecheck: "tsc --noEmit",
     });
@@ -82,6 +98,20 @@ describe("Stream Deck plugin scaffold", () => {
     await new Promise<void>((resolve) => setImmediate(resolve));
 
     expect(streamDeckMock.loggerError).toHaveBeenCalledWith("Stream Deck connection failed.", connectionError);
+    expect(console.error).toHaveBeenCalledWith("AI Deck launch parameter error:", "connection refused");
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("fails visibly before connecting when host launch parameters are absent", async () => {
+    process.argv = [process.execPath, "plugin.js"];
+
+    await import("../src/plugin");
+
+    expect(streamDeckMock.registerAction).not.toHaveBeenCalled();
+    expect(streamDeckMock.connect).not.toHaveBeenCalled();
+    expect(console.error).toHaveBeenCalledWith(
+      "AI Deck launch parameter error: Unable to establish a connection with Stream Deck, missing command line arguments: -port, -pluginUUID, -registerEvent, -info",
+    );
     expect(process.exitCode).toBe(1);
   });
 });

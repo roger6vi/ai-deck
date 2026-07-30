@@ -73,6 +73,8 @@ describe("generated-output gate", () => {
       `${ASSETS}/action@2x.png`,
       `${ASSETS}/key.png`,
       `${ASSETS}/key@2x.png`,
+      `${ASSETS}/category-icon.png`,
+      `${ASSETS}/category-icon@2x.png`,
       PROFILE_FILE,
     ]);
   });
@@ -128,8 +130,7 @@ describe("canonical envelope boundary", () => {
       "check:generated": "node scripts/check-generated.mjs",
       "validate:profile": "node scripts/validate-profile.mjs",
       "validate:plugin": "streamdeck validate com.gentleman.ai-deck.sdPlugin --no-update-check",
-      verify:
-        "npm test && npm run typecheck && npm run audit:production && npm run build && npm run generate && npm run check:generated && npm run validate:profile && npm run validate:plugin",
+      verify: "npm test && npm run typecheck && npm run audit:production && npm run pack && npm run smoke:runtime",
     });
   });
 });
