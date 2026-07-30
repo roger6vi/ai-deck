@@ -1,0 +1,72 @@
+schema: spec-driven
+
+artifact_store:
+  mode: hybrid
+  history_authority: engram
+
+execution:
+  mode: auto
+
+delivery:
+  strategy: single-pr-default
+  review_budget_lines: 800
+  chain_strategy_history: stacked-to-main
+  current_preference: one-remaining-pr
+
+strict_tdd: true
+
+context: |
+  Tech stack: Node 24, npm 11, TypeScript 5.9, Rollup, Stream Deck SDK 2.
+  Architecture: Single ESM Stream Deck plugin with local-only IPC and strict TypeScript.
+  Testing: Vitest 4 on Node; unit and local-loopback/filesystem integration coverage.
+  Quality: TypeScript strict typecheck, Rollup/plugin build, package and runtime-smoke scripts.
+  Delivery: Engram remains authoritative history; OpenSpec mirrors active change artifacts.
+
+testing:
+  runner:
+    framework: Vitest 4
+    command: npx --yes -p node@24.18.0 -p npm@11.16.0 -c 'npm ci && npm test'
+  layers:
+    unit: Vitest
+    integration: Vitest local-loopback and filesystem tests
+    e2e: Manual Stream Deck hardware acceptance
+  coverage:
+    available: false
+    command: ""
+  quality:
+    linter:
+      available: false
+      command: ""
+    typecheck:
+      available: true
+      command: npx --yes -p node@24.18.0 -p npm@11.16.0 -c 'npm ci && npm run typecheck'
+    formatter:
+      available: false
+      command: ""
+  build:
+    command: npx --yes -p node@24.18.0 -p npm@11.16.0 -c 'npm ci && npm run build'
+  ci:
+    command: npm run verify
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes.
+  specs:
+    - Use Given/When/Then for scenarios.
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY).
+  design:
+    - Document architecture decisions with rationale.
+  tasks:
+    - Group by phase and preserve completed checkbox state exactly.
+    - Keep tasks completable in one session.
+  apply:
+    - Follow existing code patterns.
+    - Preserve local-only privacy boundaries.
+    tdd: true
+    test_command: npx --yes -p node@24.18.0 -p npm@11.16.0 -c 'npm ci && npm test && npm run typecheck && npm run build'
+  verify:
+    test_command: npx --yes -p node@24.18.0 -p npm@11.16.0 -c 'npm ci && npm test && npm run typecheck'
+    build_command: npx --yes -p node@24.18.0 -p npm@11.16.0 -c 'npm ci && npm run build'
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas.

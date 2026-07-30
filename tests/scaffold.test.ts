@@ -8,6 +8,16 @@ const streamDeckMock = vi.hoisted(() => ({
   loggerError: vi.fn(),
   registerAction: vi.fn(),
 }));
+const runtimeMock = vi.hoisted(() => ({
+  unregister: vi.fn(),
+  registerLifecycle: vi.fn<() => () => void>(),
+  start: vi.fn<() => Promise<{ stop(): Promise<void> }>>(),
+  stop: vi.fn<() => Promise<void>>(),
+}));
+const VALID_LAUNCH_ARGUMENTS = [
+  process.execPath, "plugin.js", "-port", "28174", "-pluginUUID", "com.gentleman.ai-deck", "-registerEvent", "registerPlugin", "-info", "{\"application\":{}}",
+];
+const LAUNCH_PARAMETER_ERROR = "AI Deck launch parameter error.";
 
 vi.mock("@elgato/streamdeck", () => ({
   default: {
@@ -19,6 +29,10 @@ vi.mock("@elgato/streamdeck", () => ({
 
 vi.mock("../src/actions/session-slot", () => ({
   SessionSlotAction: class {},
+}));
+vi.mock("../src/plugin/runtime", () => ({
+  registerPluginRuntimeProcessLifecycle: runtimeMock.registerLifecycle,
+  startPluginRuntime: runtimeMock.start,
 }));
 
 interface PackageManifest {
@@ -42,20 +56,12 @@ describe("Stream Deck plugin scaffold", () => {
 
   beforeEach(() => {
     process.exitCode = undefined;
-    process.argv = [
-      process.execPath,
-      "plugin.js",
-      "-port",
-      "0",
-      "-pluginUUID",
-      "test-plugin",
-      "-registerEvent",
-      "registerPlugin",
-      "-info",
-      "{}",
-    ];
+    process.argv = [...VALID_LAUNCH_ARGUMENTS];
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.clearAllMocks();
+    runtimeMock.stop.mockResolvedValue(undefined);
+    runtimeMock.start.mockResolvedValue({ stop: runtimeMock.stop });
+    runtimeMock.registerLifecycle.mockReturnValue(runtimeMock.unregister);
     vi.resetModules();
   });
 
@@ -82,36 +88,70 @@ describe("Stream Deck plugin scaffold", () => {
     expect(SESSION_SLOT_ACTION_UUID).toBe("com.gentleman.ai-deck.session-slot");
   });
 
-  it("registers the session-slot action before connecting", async () => {
+  it("starts the local runtime, registers the action, and then connects exactly once", async () => {
     streamDeckMock.connect.mockResolvedValue(undefined);
 
     await import("../src/plugin");
 
+    expect(streamDeckMock.registerAction).toHaveBeenCalledOnce();
+    expect(runtimeMock.start).toHaveBeenCalledBefore(streamDeckMock.registerAction);
     expect(streamDeckMock.registerAction).toHaveBeenCalledBefore(streamDeckMock.connect);
+    expect(streamDeckMock.connect).toHaveBeenCalledOnce();
   });
 
   it("logs and exits non-zero when the Stream Deck connection fails", async () => {
-    const connectionError = new Error("connection refused");
+    const connectionError = new Error("TOKEN_PATH_EVENT_SENTINEL");
     streamDeckMock.connect.mockRejectedValue(connectionError);
 
     await import("../src/plugin");
     await new Promise<void>((resolve) => setImmediate(resolve));
 
-    expect(streamDeckMock.loggerError).toHaveBeenCalledWith("Stream Deck connection failed.", connectionError);
-    expect(console.error).toHaveBeenCalledWith("AI Deck launch parameter error:", "connection refused");
+    expect(runtimeMock.stop).toHaveBeenCalledOnce();
+    expect(runtimeMock.unregister).toHaveBeenCalledOnce();
+    expect(streamDeckMock.loggerError).toHaveBeenCalledWith("Stream Deck connection failed.");
+    expect(console.error).toHaveBeenCalledWith("Stream Deck connection failed.");
+    expect(JSON.stringify(streamDeckMock.loggerError.mock.calls)).not.toContain("TOKEN_PATH_EVENT_SENTINEL");
     expect(process.exitCode).toBe(1);
   });
 
-  it("fails visibly before connecting when host launch parameters are absent", async () => {
-    process.argv = [process.execPath, "plugin.js"];
+  it("contains rejected runtime startup and a throwing SDK logger before action registration or connect", async () => {
+    const sentinel = "TOKEN_PATH_EVENT_SENTINEL";
+    runtimeMock.start.mockRejectedValue(new Error(sentinel));
+    streamDeckMock.loggerError.mockImplementation(() => { throw new Error(sentinel); });
 
     await import("../src/plugin");
+    await new Promise<void>((resolve) => setImmediate(resolve));
 
     expect(streamDeckMock.registerAction).not.toHaveBeenCalled();
     expect(streamDeckMock.connect).not.toHaveBeenCalled();
-    expect(console.error).toHaveBeenCalledWith(
-      "AI Deck launch parameter error: Unable to establish a connection with Stream Deck, missing command line arguments: -port, -pluginUUID, -registerEvent, -info",
-    );
+    expect(streamDeckMock.loggerError).toHaveBeenCalledWith("AI Deck local runtime startup failed.");
+    expect(console.error).toHaveBeenCalledWith("AI Deck local runtime startup failed.");
+    expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain(sentinel);
+    expect(JSON.stringify(streamDeckMock.loggerError.mock.calls)).not.toContain(sentinel);
     expect(process.exitCode).toBe(1);
+  });
+
+  it("rejects malformed host launch arguments before any runtime mutation", async () => {
+    const sentinel = "TOKEN_PATH_EVENT_SENTINEL";
+    const cases = [
+      [process.execPath, "plugin.js"],
+      [process.execPath, "plugin.js", "-port"],
+      [process.execPath, "plugin.js", "-port", "-pluginUUID", "value", "-registerEvent", "event", "-info", "{}"],
+      [process.execPath, "plugin.js", "-port", "0", "-pluginUUID", "value", "-registerEvent", "event", "-info", "{}"],
+      [process.execPath, "plugin.js", "-port", "65536", "-pluginUUID", "value", "-registerEvent", "event", "-info", "{}"],
+      [process.execPath, "plugin.js", "-port", "not-a-port", "-pluginUUID", "value", "-registerEvent", "event", "-info", "{}"],
+      [process.execPath, "plugin.js", "-port", "28174", "-pluginUUID", "value", "-registerEvent", "event", "-info", "{"],
+      [process.execPath, "plugin.js", "-port", "28174", "-pluginUUID", "value", "-registerEvent", "event", "-info", `["${sentinel}"]`],
+    ];
+    for (const args of cases) {
+      vi.clearAllMocks(); vi.resetModules(); process.exitCode = undefined; process.argv = args;
+      await import("../src/plugin");
+      expect(streamDeckMock.registerAction).not.toHaveBeenCalled();
+      expect(runtimeMock.start).not.toHaveBeenCalled();
+      expect(streamDeckMock.connect).not.toHaveBeenCalled();
+      expect(console.error).toHaveBeenCalledWith(LAUNCH_PARAMETER_ERROR);
+      expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain(sentinel);
+      expect(process.exitCode).toBe(1);
+    }
   });
 });
