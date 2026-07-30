@@ -4,7 +4,12 @@ import type { KeyAction, WillAppearEvent } from "@elgato/streamdeck";
 
 import { SESSION_COLOR_LIMITS, SESSION_SLOT_COLOR } from "../../src/core/colors";
 import { SESSION_STATUS, type LocalAgentStatusEvent, type SessionStatus } from "../../src/core/types";
-import { SessionSlotController, type SessionSlotControllerOptions } from "../../src/plugin/session-slot-controller";
+import {
+  SESSION_SLOT_RENDER_ERROR,
+  SESSION_SLOT_RENDER_RETRY_DELAY_MS,
+  SessionSlotController,
+  type SessionSlotControllerOptions,
+} from "../../src/plugin/session-slot-controller";
 
 interface MockKey {
   readonly id: string;
@@ -21,6 +26,7 @@ interface Timer {
 interface Fixture {
   readonly clock: { now: () => number };
   readonly scheduler: { schedule: (callback: () => void, delayMs: number) => Timer; cancel: (timer: Timer) => void };
+  readonly logger: { error: ReturnType<typeof vi.fn<(message: string) => void>> };
   readonly timers: Timer[];
   setNow(now: number): void;
   runDue(): void;
@@ -42,6 +48,7 @@ function fixture(): Fixture {
       },
       cancel: (timer) => { timer.cancelled = true; },
     },
+    logger: { error: vi.fn<(message: string) => void>() },
     timers,
     setNow: (value) => { now = value; },
     runDue: () => timers.filter((timer) => !timer.cancelled && timer.deadline <= now).forEach((timer) => {
@@ -106,6 +113,145 @@ function deferredRender(): DeferredRender {
 }
 
 describe("session slot production render scheduling", () => {
+  it("logs the fixed generic error and schedules one bounded retry after a direct render failure", async () => {
+    const testFixture = fixture();
+    const subject = controller(testFixture);
+    const action = key("first");
+    action.setImage.mockRejectedValueOnce(new Error("raw render failure"));
+
+    await subject.registerVisibleAction(appear(action));
+
+    expect(testFixture.logger.error).toHaveBeenCalledExactlyOnceWith(SESSION_SLOT_RENDER_ERROR);
+    expect(testFixture.timers).toHaveLength(1);
+    expect(testFixture.timers[0]?.deadline).toBe(SESSION_SLOT_RENDER_RETRY_DELAY_MS);
+    expect(testFixture.activeTimerCount()).toBe(1);
+  });
+
+  it("uses the current clock on retry, renders the current color, and resumes advisory scheduling", async () => {
+    const testFixture = fixture();
+    const subject = controller(testFixture);
+    const action = key("first");
+    await subject.registerVisibleAction(appear(action));
+    action.setImage.mockRejectedValueOnce(new Error("offline"));
+
+    testFixture.setNow(1);
+    await subject.handleStatusEvent(status(), 1);
+    testFixture.setNow(1 + SESSION_SLOT_RENDER_RETRY_DELAY_MS);
+    testFixture.runDue();
+    await settle();
+
+    expect(lastImage(action)).toContain(SESSION_SLOT_COLOR.AMBER);
+    expect(testFixture.activeTimerCount()).toBe(1);
+    expect(testFixture.timers.at(-1)?.deadline).toBe(1 + SESSION_COLOR_LIMITS.RUNNING_ADVISORY_MS);
+  });
+
+  it("logs a generic second failure and stops the retry without an unhandled rejection", async () => {
+    const testFixture = fixture();
+    const subject = controller(testFixture);
+    const action = key("first");
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    action.setImage.mockRejectedValueOnce(new Error("first failure")).mockRejectedValueOnce(new Error("second failure"));
+
+    try {
+      await subject.registerVisibleAction(appear(action));
+      testFixture.setNow(SESSION_SLOT_RENDER_RETRY_DELAY_MS);
+      testFixture.runDue();
+      await settle();
+
+      expect(testFixture.logger.error).toHaveBeenCalledTimes(2);
+      expect(testFixture.logger.error).toHaveBeenNthCalledWith(1, SESSION_SLOT_RENDER_ERROR);
+      expect(testFixture.logger.error).toHaveBeenNthCalledWith(2, SESSION_SLOT_RENDER_ERROR);
+      expect(testFixture.activeTimerCount()).toBe(0);
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
+  });
+
+  it("cancels an amber retry when state rolls back to an already-rendered green slot", async () => {
+    const testFixture = fixture();
+    const subject = controller(testFixture);
+    const action = key("first");
+    await subject.registerVisibleAction(appear(action));
+    action.setImage.mockRejectedValueOnce(new Error("amber failure"));
+
+    await subject.handleStatusEvent(status(), 1);
+    const staleRetry = testFixture.timers.at(-1);
+    if (staleRetry === undefined) throw new Error("Expected a queued retry.");
+    await subject.handleStatusEvent(status(SESSION_STATUS.PANE_DISAPPEARED, 2), 2);
+    staleRetry.callback();
+    await settle();
+
+    expect(staleRetry.cancelled).toBe(true);
+    expect(action.setImage).toHaveBeenCalledTimes(2);
+    expect(testFixture.activeTimerCount()).toBe(0);
+  });
+
+  it("cancels a retry for newer rendering, duplicate contexts, unregistration, and disposal", async () => {
+    const cleanupCases: ReadonlyArray<(subject: SessionSlotController, action: MockKey) => Promise<void> | void> = [
+      (subject) => subject.refresh(0),
+      (subject, action) => subject.registerVisibleAction(appear(action)),
+      (subject, action) => subject.unregisterVisibleAction(action.id),
+      (subject) => subject.dispose(),
+    ];
+
+    for (const cleanup of cleanupCases) {
+      const testFixture = fixture();
+      const subject = controller(testFixture);
+      const action = key("first");
+      action.setImage.mockRejectedValueOnce(new Error("retry cancellation"));
+      await subject.registerVisibleAction(appear(action));
+      const staleRetry = testFixture.timers.at(-1);
+      if (staleRetry === undefined) throw new Error("Expected a queued retry.");
+
+      await cleanup(subject, action);
+      staleRetry.callback();
+      await settle();
+
+      expect(staleRetry.cancelled).toBe(true);
+      expect(testFixture.activeTimerCount()).toBe(0);
+    }
+  });
+
+  it("keeps retry work independent per visible context", async () => {
+    const testFixture = fixture();
+    const subject = controller(testFixture);
+    const first = key("first", 0);
+    const second = key("second", 1);
+    testFixture.setNow(2);
+    await subject.handleStatusEvent(status(SESSION_STATUS.STARTED, 1), 1);
+    await subject.handleStatusEvent(status(SESSION_STATUS.STARTED, 2, "223e4567-e89b-42d3-a456-426614174000"), 2);
+    first.setImage.mockRejectedValueOnce(new Error("first retry"));
+    second.setImage.mockRejectedValueOnce(new Error("second retry"));
+
+    await subject.registerVisibleAction(appear(first));
+    await subject.registerVisibleAction(appear(second));
+    expect(testFixture.activeTimerCount()).toBe(2);
+    testFixture.setNow(2 + SESSION_SLOT_RENDER_RETRY_DELAY_MS);
+    testFixture.runDue();
+    await settle();
+
+    expect(first.setImage).toHaveBeenCalledTimes(2);
+    expect(second.setImage).toHaveBeenCalledTimes(2);
+    expect(testFixture.activeTimerCount()).toBe(2);
+  });
+
+  it("never passes render content to the logger and contains a throwing logger", async () => {
+    const testFixture = fixture();
+    const subject = controller(testFixture);
+    const action = key("private-context");
+    const sentinel = "RAW_SENTINEL private-context #ff0000 data:image/svg+xml,%3Csvg%3E %123";
+    action.setImage.mockRejectedValueOnce(new Error(sentinel));
+    testFixture.logger.error.mockImplementation(() => { throw new Error("logger failure"); });
+
+    await subject.registerVisibleAction(appear(action));
+
+    expect(testFixture.logger.error).toHaveBeenCalledExactlyOnceWith(SESSION_SLOT_RENDER_ERROR);
+    expect(testFixture.logger.error.mock.calls.flat().join(" ")).not.toContain(sentinel);
+    expect(testFixture.activeTimerCount()).toBe(1);
+  });
+
   it("schedules amber once, remains amber before the deadline, and renders red at the exact boundary", async () => {
     const testFixture = fixture();
     const subject = controller(testFixture);
@@ -233,13 +379,16 @@ describe("session slot production render scheduling", () => {
     expect(testFixture.activeTimerCount()).toBe(0);
   });
 
-  it("stops after the immediate red render fails", async () => {
+  it("stops after the retry of a failed immediate red render also fails", async () => {
     const testFixture = fixture();
     const subject = controller(testFixture);
     const action = key("first");
     await subject.registerVisibleAction(appear(action));
     const pendingAmber = deferredRender();
-    action.setImage.mockImplementationOnce(() => pendingAmber.promise).mockRejectedValueOnce(new Error("offline"));
+    action.setImage
+      .mockImplementationOnce(() => pendingAmber.promise)
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockRejectedValueOnce(new Error("offline"));
 
     testFixture.setNow(1);
     const refresh = subject.handleStatusEvent(status(), 1);
@@ -248,8 +397,11 @@ describe("session slot production render scheduling", () => {
     await refresh;
     testFixture.runDue();
     await settle();
+    testFixture.setNow(1 + SESSION_COLOR_LIMITS.RUNNING_ADVISORY_MS + 1 + SESSION_SLOT_RENDER_RETRY_DELAY_MS);
+    testFixture.runDue();
+    await settle();
 
-    expect(action.setImage).toHaveBeenCalledTimes(3);
+    expect(action.setImage).toHaveBeenCalledTimes(4);
     expect(testFixture.activeTimerCount()).toBe(0);
   });
 
