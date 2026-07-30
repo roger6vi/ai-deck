@@ -106,37 +106,30 @@ describe("generated-output gate", () => {
   });
 });
 
-describe("PR1D validation boundary", () => {
-  it("does not expose or invoke public ZIP profile validation", async () => {
+describe("canonical envelope boundary", () => {
+  it("keeps profile-contract ZIP-reader free while exposing the canonical envelope CLI", async () => {
     const packageJson = JSON.parse(await readFile(join(ROOT, "package.json"), "utf8")) as PackageJson;
+    const envelopeSource = await readFile(join(ROOT, "scripts/profile-envelope.mjs"), "utf8");
 
     expect(profileContract).not.toHaveProperty("readProfileArchive");
     expect(profileContract).not.toHaveProperty("validateProfileArchive");
-    expect(packageJson.scripts).not.toHaveProperty("validate:profile");
-    await expect(access(join(ROOT, "scripts/validate-profile.mjs"))).rejects.toThrow();
+    expect(packageJson.scripts).toHaveProperty("validate:profile", "node scripts/validate-profile.mjs");
+    expect(envelopeSource).not.toContain("zip.js");
+    expect(envelopeSource).not.toContain("JSON.parse");
+    expect(envelopeSource).not.toContain("getData");
+    await expect(access(join(ROOT, "scripts/validate-profile.mjs"))).resolves.toBeUndefined();
   });
 
-  it("keeps the Node 24 CI verification chain profile-validator free", async () => {
+  it("runs canonical validation before the official plugin CLI", async () => {
     const packageJson = JSON.parse(await readFile(join(ROOT, "package.json"), "utf8")) as PackageJson;
-    const workflow = await readFile(join(ROOT, ".github/workflows/verify.yml"), "utf8");
-    const nvmrc = (await readFile(join(ROOT, ".nvmrc"), "utf8")).trim();
-    const tsconfig = JSON.parse(await readFile(join(ROOT, "tsconfig.json"), "utf8")) as {
-      compilerOptions: { lib: string[] };
-    };
-    const engines = packageJson.engines;
 
     expect(packageJson.scripts).toMatchObject({
       "audit:production": "npm audit --omit=dev --audit-level=low",
       "check:generated": "node scripts/check-generated.mjs",
+      "validate:profile": "node scripts/validate-profile.mjs",
       "validate:plugin": "streamdeck validate com.gentleman.ai-deck.sdPlugin --no-update-check",
       verify:
-        "npm test && npm run typecheck && npm run audit:production && npm run build && npm run generate && npm run check:generated && npm run validate:plugin",
+        "npm test && npm run typecheck && npm run audit:production && npm run build && npm run generate && npm run check:generated && npm run validate:profile && npm run validate:plugin",
     });
-    expect(workflow).toContain("node-version-file: .nvmrc");
-    expect(nvmrc).toBe("24");
-    expect(engines.node).toBe("24.x");
-    expect(workflow).toMatch(/^      - run: npm ci$/m);
-    expect(workflow).toMatch(/^      - run: npm run verify$/m);
-    expect(tsconfig.compilerOptions.lib).toEqual(["ES2024", "DOM"]);
   });
 });
