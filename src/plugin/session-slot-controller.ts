@@ -1,4 +1,4 @@
-import type { KeyAction, WillAppearEvent } from "@elgato/streamdeck";
+import streamDeck, { type KeyAction, type WillAppearEvent } from "@elgato/streamdeck";
 
 import {
   SESSION_REDUCER_ACTION,
@@ -25,6 +25,9 @@ const SESSION_SLOT_RENDER_RESULT = {
 
 type SessionSlotRenderResult = (typeof SESSION_SLOT_RENDER_RESULT)[keyof typeof SESSION_SLOT_RENDER_RESULT];
 
+export const SESSION_SLOT_RENDER_RETRY_DELAY_MS = 50;
+export const SESSION_SLOT_RENDER_ERROR = "Session slot render failed.";
+
 export interface SessionSlotClock {
   now(): number;
 }
@@ -34,9 +37,14 @@ export interface SessionSlotScheduler {
   cancel(handle: unknown): void;
 }
 
+export interface SessionSlotLogger {
+  error(message: string): void;
+}
+
 export interface SessionSlotControllerOptions {
   readonly clock: SessionSlotClock;
   readonly scheduler: SessionSlotScheduler;
+  readonly logger: SessionSlotLogger;
 }
 
 const productionControllerOptions: SessionSlotControllerOptions = {
@@ -45,6 +53,9 @@ const productionControllerOptions: SessionSlotControllerOptions = {
     schedule: (callback, delayMs) => setTimeout(callback, delayMs),
     cancel: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
   },
+  logger: {
+    error: (message) => streamDeck.logger.error(message),
+  },
 };
 
 interface VisibleSessionSlot {
@@ -52,8 +63,10 @@ interface VisibleSessionSlot {
   readonly slotIndex: number;
   renderGeneration: number;
   advisoryGeneration: number;
+  retryGeneration: number;
   renderedColor?: SessionSlotColor;
   advisoryTimer?: unknown;
+  retryTimer?: unknown;
 }
 
 function isSlotIndex(value: number): boolean {
@@ -93,8 +106,8 @@ export class SessionSlotController {
     if (slotIndex === undefined) return;
     const action = event.action as KeyAction;
     const priorVisible = this.#visibleActions.get(action.id);
-    if (priorVisible !== undefined) this.#cancelAdvisory(priorVisible);
-    const visible: VisibleSessionSlot = { action, slotIndex, renderGeneration: 0, advisoryGeneration: 0 };
+    if (priorVisible !== undefined) this.#cancelVisibleWork(priorVisible);
+    const visible: VisibleSessionSlot = { action, slotIndex, renderGeneration: 0, advisoryGeneration: 0, retryGeneration: 0 };
     this.#visibleActions.set(action.id, visible);
     await this.#refreshVisible(visible, this.#state, true, this.options.clock.now());
   }
@@ -102,7 +115,7 @@ export class SessionSlotController {
   unregisterVisibleAction(contextId: string): void {
     const visible = this.#visibleActions.get(contextId);
     if (visible === undefined) return;
-    this.#cancelAdvisory(visible);
+    this.#cancelVisibleWork(visible);
     this.#visibleActions.delete(contextId);
   }
 
@@ -126,16 +139,21 @@ export class SessionSlotController {
   }
 
   dispose(): void {
-    for (const visible of this.#visibleActions.values()) this.#cancelAdvisory(visible);
+    for (const visible of this.#visibleActions.values()) this.#cancelVisibleWork(visible);
     this.#visibleActions.clear();
   }
 
   async #refreshVisible(visible: VisibleSessionSlot, state: SessionState, force: boolean, now: number): Promise<void> {
     this.#cancelAdvisory(visible);
+    this.#cancelRetry(visible);
     const generation = visible.renderGeneration + 1;
     visible.renderGeneration = generation;
     const renderResult = await this.#renderVisible(visible, state, force, now, generation);
-    if (renderResult === SESSION_SLOT_RENDER_RESULT.FAILED) return;
+    if (renderResult === SESSION_SLOT_RENDER_RESULT.FAILED) {
+      this.#logRenderFailure();
+      this.#scheduleRetry(visible, generation);
+      return;
+    }
     if (this.#visibleActions.get(visible.action.id) !== visible || visible.renderGeneration !== generation) return;
     const freshNow = Math.max(now, this.options.clock.now());
     if (this.#scheduleDeadlineRefresh(visible, state, freshNow, generation)) return;
@@ -180,6 +198,51 @@ export class SessionSlotController {
     this.options.scheduler.cancel(visible.advisoryTimer);
     visible.advisoryTimer = undefined;
     visible.advisoryGeneration += 1;
+  }
+
+  #scheduleRetry(visible: VisibleSessionSlot, renderGeneration: number): void {
+    if (this.#visibleActions.get(visible.action.id) !== visible || visible.renderGeneration !== renderGeneration) return;
+    this.#cancelRetry(visible);
+    const retryGeneration = visible.retryGeneration + 1;
+    visible.retryGeneration = retryGeneration;
+    visible.retryTimer = this.options.scheduler.schedule(() => {
+      if (visible.retryGeneration !== retryGeneration || visible.renderGeneration !== renderGeneration || this.#visibleActions.get(visible.action.id) !== visible) return;
+      visible.retryTimer = undefined;
+      void this.#retryRender(visible, renderGeneration);
+    }, SESSION_SLOT_RENDER_RETRY_DELAY_MS);
+  }
+
+  async #retryRender(visible: VisibleSessionSlot, generation: number): Promise<void> {
+    const now = this.options.clock.now();
+    const renderResult = await this.#renderVisible(visible, this.#state, false, now, generation);
+    if (renderResult === SESSION_SLOT_RENDER_RESULT.FAILED) {
+      this.#logRenderFailure();
+      return;
+    }
+    if (this.#visibleActions.get(visible.action.id) !== visible || visible.renderGeneration !== generation) return;
+    if (this.#scheduleDeadlineRefresh(visible, this.#state, now, generation)) return;
+    this.#scheduleAdvisory(visible, this.#state, now, generation);
+  }
+
+  #cancelRetry(visible: VisibleSessionSlot): void {
+    if (visible.retryTimer !== undefined) {
+      this.options.scheduler.cancel(visible.retryTimer);
+      visible.retryTimer = undefined;
+    }
+    visible.retryGeneration += 1;
+  }
+
+  #cancelVisibleWork(visible: VisibleSessionSlot): void {
+    this.#cancelAdvisory(visible);
+    this.#cancelRetry(visible);
+  }
+
+  #logRenderFailure(): void {
+    try {
+      this.options.logger.error(SESSION_SLOT_RENDER_ERROR);
+    } catch {
+      // Logging must not interfere with local rendering recovery.
+    }
   }
 
   async #renderVisible(
