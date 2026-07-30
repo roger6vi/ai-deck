@@ -8,7 +8,8 @@
   },
   "packageManager": "npm@11.16.0",
   "scripts": {
-    "build": "rollup -c",
+    "build": "node scripts/build-plugin.mjs",
+    "build:rollup": "rollup -c",
     "assets:build": "node scripts/build-assets.mjs",
     "profile:build": "node scripts/build-profile.mjs",
     "generate": "npm run assets:build && npm run profile:build",
@@ -17,8 +18,13 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "validate:plugin": "streamdeck validate com.gentleman.ai-deck.sdPlugin --no-update-check",
+    "check:package": "node scripts/check-package.mjs",
+    "smoke:runtime": "node scripts/runtime-smoke.mjs",
+    "restart:plugin": "streamdeck restart com.gentleman.ai-deck",
+    "uninstall:plugin": "streamdeck unlink --delete com.gentleman.ai-deck",
+    "pack": "npm run build && npm run generate && npm run check:generated && npm run validate:profile && npm run validate:plugin && rm -rf com.gentleman.ai-deck.sdPlugin/bin.previous com.gentleman.ai-deck.sdPlugin/bin.next .package-stage && mkdir .package-stage && cp -R com.gentleman.ai-deck.sdPlugin .package-stage/ && streamdeck pack .package-stage/com.gentleman.ai-deck.sdPlugin --output dist --force --no-update-check && rm -rf .package-stage && npm run check:package",
     "audit:production": "npm audit --omit=dev --audit-level=low",
-    "verify": "npm test && npm run typecheck && npm run audit:production && npm run build && npm run generate && npm run check:generated && npm run validate:profile && npm run validate:plugin"
+    "verify": "npm test && npm run typecheck && npm run audit:production && npm run pack && npm run smoke:runtime"
   },
   "dependencies": {
     "@elgato/streamdeck": "2.1.0"

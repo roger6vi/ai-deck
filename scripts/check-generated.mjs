@@ -18,6 +18,8 @@ const ASSET_FILES = Object.freeze([
   "action@2x.png",
   "key.png",
   "key@2x.png",
+  "category-icon.png",
+  "category-icon@2x.png",
 ]);
 const BUILD_ASSETS_SCRIPT = fileURLToPath(new URL("./build-assets.mjs", import.meta.url));
 

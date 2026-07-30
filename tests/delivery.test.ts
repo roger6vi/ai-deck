@@ -18,8 +18,10 @@ const ASSET_DIMENSIONS = {
   "action@2x.png": 40,
   "key.png": 72,
   "key@2x.png": 144,
+  "category-icon.png": 28,
+  "category-icon@2x.png": 56,
 } as const;
-const ACTION_ASSETS = ["action.png", "action@2x.png"] as const;
+const MONOCHROME_ASSETS = ["action.png", "action@2x.png", "category-icon.png", "category-icon@2x.png"] as const;
 const temporaryDirectories: string[] = [];
 const PNG_SIGNATURE_OFFSET = 0;
 const PNG_SIGNATURE_LENGTH = 8;
@@ -105,9 +107,9 @@ describe("plugin delivery contract", () => {
     expect(action).not.toHaveProperty("Profiles");
     const state = (action.States as Array<Record<string, unknown>>)[0];
     if (!state) throw new Error("Reserved action must contain its key state.");
-    const assetPaths = [manifest.Icon, action.Icon, state.Image];
-    expect(assetPaths).toEqual(["assets/plugin", "assets/action", "assets/key"]);
-    expect(new Set(assetPaths)).toHaveLength(3);
+    const assetPaths = [manifest.Icon, action.Icon, state.Image, manifest.CategoryIcon];
+    expect(assetPaths).toEqual(["assets/plugin", "assets/action", "assets/key", "assets/category-icon"]);
+    expect(new Set(assetPaths)).toHaveLength(4);
   });
 
   it("ships the six manifest-referenced PNGs at exact dimensions", async () => {
@@ -120,8 +122,8 @@ describe("plugin delivery contract", () => {
     );
   });
 
-  it("renders action-list icons as white foreground over transparent background", async () => {
-    for (const file of ACTION_ASSETS) {
+  it("renders action and category icons as white foreground over transparent background", async () => {
+    for (const file of MONOCHROME_ASSETS) {
       const { width, pixels } = inspectPng(await readFile(resolve(ASSETS_DIRECTORY, file)));
       const stride = width * RGBA_BYTES_PER_PIXEL + PNG_FILTER_BYTES_PER_ROW;
       let transparentPixelCount = 0;

@@ -6,6 +6,7 @@
   "Author": "Gentleman Programming",
   "Description": "Reserved local session slots scaffold for Stream Deck.",
   "Category": "AI Deck",
+  "CategoryIcon": "assets/category-icon",
   "Icon": "assets/plugin",
   "CodePath": "bin/plugin.js",
   "SDKVersion": 2,

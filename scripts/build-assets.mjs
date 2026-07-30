@@ -27,6 +27,7 @@ const PNG_FILTER_TYPE_NONE = 0;
 const PLUGIN_ICON_SIZE = 256;
 const ACTION_ICON_SIZE = 20;
 const KEY_IMAGE_SIZE = 72;
+const CATEGORY_ICON_SIZE = 28;
 const ICON_DOUBLE_SCALE = 2;
 const ICON_INSET_RATIO = 0.3;
 const ACTION_INSET_RATIO = 0.2;
@@ -41,6 +42,8 @@ const ASSET_FILES = [
   ["action@2x.png", ACTION_ICON_SIZE * ICON_DOUBLE_SCALE, createActionPixels],
   ["key.png", KEY_IMAGE_SIZE, createIconPixels],
   ["key@2x.png", KEY_IMAGE_SIZE * ICON_DOUBLE_SCALE, createIconPixels],
+  ["category-icon.png", CATEGORY_ICON_SIZE, createActionPixels],
+  ["category-icon@2x.png", CATEGORY_ICON_SIZE * ICON_DOUBLE_SCALE, createActionPixels],
 ];
 
 function crc32(data) {
