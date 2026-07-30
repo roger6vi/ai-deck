@@ -22,7 +22,7 @@
     "smoke:runtime": "node scripts/runtime-smoke.mjs",
     "restart:plugin": "streamdeck restart com.gentleman.ai-deck",
     "uninstall:plugin": "streamdeck unlink --delete com.gentleman.ai-deck",
-    "pack": "npm run build && npm run generate && npm run check:generated && npm run validate:profile && npm run validate:plugin && rm -rf com.gentleman.ai-deck.sdPlugin/bin.previous com.gentleman.ai-deck.sdPlugin/bin.next .package-stage && mkdir .package-stage && cp -R com.gentleman.ai-deck.sdPlugin .package-stage/ && streamdeck pack .package-stage/com.gentleman.ai-deck.sdPlugin --output dist --force --no-update-check && rm -rf .package-stage && npm run check:package",
+    "pack": "npm run build && npm run generate && npm run check:generated && npm run validate:profile && npm run validate:plugin && rm -rf com.gentleman.ai-deck.sdPlugin/bin.previous com.gentleman.ai-deck.sdPlugin/bin.next .package-stage && node scripts/pack-plugin.mjs",
     "audit:production": "npm audit --omit=dev --audit-level=low",
     "verify": "npm test && npm run typecheck && npm run audit:production && npm run pack && npm run smoke:runtime"
   },

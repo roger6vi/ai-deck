@@ -230,6 +230,25 @@ describe("local loopback event server", () => {
     } finally { void pendingResponse?.catch(() => undefined); process.off("unhandledRejection", unhandled); await handle.close(); }
   });
 
+  it("recovers fresh callback capacity only through a new local server after a hung callback", async () => {
+    const pending = deferred();
+    const initial = await server(() => pending.promise, { callbackDeadlineMs: 10, maxInFlightCallbacks: 1 });
+    try {
+      expect((await send(initial)).status).toBe(503);
+      expect((await send(initial)).status).toBe(503);
+    } finally {
+      await initial.close();
+      pending.resolve();
+    }
+
+    const replacement = await server();
+    try {
+      expect((await send(replacement)).status).toBe(204);
+    } finally {
+      await replacement.close();
+    }
+  });
+
   it("rejects excess valid requests until pending callbacks settle and closes idempotently", async () => {
     const pending = deferred(); const closing = deferred(); const errors: string[] = []; let calls = 0;
     const handle = await server(() => { calls += 1; return calls === 1 ? pending.promise : calls === 2 ? closing.promise : undefined; }, {

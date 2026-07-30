@@ -1,0 +1,33 @@
+schema: openspec-change-state/v1
+change: local-agent-session-status
+status: applying
+phase: apply
+artifact_store:
+  mode: hybrid
+  history_authority: engram
+engram:
+  apply_progress_topic: sdd/local-agent-session-status/apply-progress
+  tasks_topic: sdd/local-agent-session-status/tasks
+task_progress:
+  completed:
+    - "1.1"
+    - "1.2"
+    - "1.3"
+    - "2.1"
+    - "2.2"
+    - "2.3"
+  remaining:
+    - "3.1"
+    - "3.2"
+    - "3.3"
+    - "3.4"
+    - "4.1"
+    - "4.2"
+    - "4.3"
+apply_progress:
+  current_slice: C2 pre-PR remediation
+  status: C2a+C2b remediation verified; one remaining PR approved under 1,600-line size exception; remaining integration pending
+  implementation: uncommitted
+  verification: Node24 focused packaging 13/13 repeated 3x + typecheck passed; exact npm run verify passed 298/298 spawn/smoke deadline
+  blockers: []
+  next_action: prepare one remaining single-pr-default under roger6vi-approved 1,600-line size exception; preserve task checkbox state
