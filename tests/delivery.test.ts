@@ -102,6 +102,7 @@ describe("plugin delivery contract", () => {
     expect(action).toMatchObject({
       Name: "Reserved Session Slot",
       UUID: SESSION_SLOT_ACTION_UUID,
+      Tooltip: "Content-free local session status slot.",
     });
     expect(action).not.toHaveProperty("DeviceType");
     expect(action).not.toHaveProperty("Profiles");
