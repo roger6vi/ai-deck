@@ -24,6 +24,13 @@
 - **Implemented and verified**: gray is free/unassigned/disabled; green is assigned idle/read or physically acknowledged and never free; amber, red, and blue remain unchanged.
 - **Current verification**: Native ordinal 11 on Node 24.18.0 — exact `npm run verify` passed **300/300** tests, typecheck, production audit (0 vulnerabilities), package validation, and bounded runtime smoke.
 
+## Native Ordinal 12 Physical Acceptance
+
+- On `fcd24b1d7abb86aed33120df7d76af1b9695d5d5`, `npm run build` and `npm run restart:plugin` succeeded; a fresh live `127.0.0.1` endpoint validated with runtime `0700`, endpoint `0600`, and no secrets recorded.
+- Tracked sessions `1111…`, `2222…`, and `3333…` each returned `204` for `started` and exact matching `pane-disappeared`, leaving zero assignments.
+- User confirmed both three amber/two disabled gray and immediate release to all five physical slots gray.
+- Fresh `StreamDeck.log` restart window `2026-07-31T10:26:13.740+02:00`–`10:26:13.920+02:00` had owner PID 149 live at evidence time and zero fixed startup/render/server error matches; no profile, relink, source, Git, or GitHub mutation occurred. Physical acceptance passed; tasks remain 6/13 and 3.1/3.2 remain unchecked.
+
 ## Completed Tasks
 
 - [x] 1.1 PR 1A: Node 24 package, strict TypeScript/Rollup/Vitest scaffold, CI, minimal plugin/action compilation, and focused tooling tests.

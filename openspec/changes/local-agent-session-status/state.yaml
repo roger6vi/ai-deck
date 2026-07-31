@@ -25,10 +25,10 @@ task_progress:
     - "4.2"
     - "4.3"
 apply_progress:
-  current_slice: Native ordinal 11 unassigned-slot visual contract
-  status: Base64 SVG rendering remediation and the clarified disabled-gray unassigned-slot contract are verified; no live hardware action occurred
+  current_slice: Native ordinal 12 physical acceptance
+  status: Physical acceptance passed; user confirmed three amber/two disabled gray and tracked pane disappearance released all five slots to gray
   implementation: uncommitted
-  verification: Node24 focused action/controller/reducer 28/28 + typecheck passed; exact npm run verify passed 300/300, audit, package validation, and bounded runtime smoke
+  verification: Native ordinal 12 restart succeeded; three tracked sessions returned 204 for started and exact pane-disappeared; zero assignments, all-gray user confirmation, and fresh StreamDeck.log window had PID 149 alive with zero fixed errors
   blockers: []
   requirement_amendment: unassigned slots gray; green only for assigned acknowledged/read sessions; exact N assigned colors plus 5-N gray; immediate gray release on pane disappearance; initial all-gray state
-  next_action: continue deferred 3.1/3.2 navigation, persistence, adapter, installer, recovery, and integration scope; preserve 6/13 task checkbox state and do not mutate the native ledger
+  next_action: CI/merge PR #30 under existing authorization, then continue deferred 3.1/3.2 navigation, persistence, adapter, installer, recovery, and integration scope; preserve 6/13 task checkbox state and do not mutate the native ledger
