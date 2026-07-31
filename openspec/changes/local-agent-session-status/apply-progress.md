@@ -31,6 +31,14 @@
 - User confirmed both three amber/two disabled gray and immediate release to all five physical slots gray.
 - Fresh `StreamDeck.log` restart window `2026-07-31T10:26:13.740+02:00`–`10:26:13.920+02:00` had owner PID 149 live at evidence time and zero fixed startup/render/server error matches; no profile, relink, source, Git, or GitHub mutation occurred. Physical acceptance passed; tasks remain 6/13 and 3.1/3.2 remain unchecked.
 
+## Native Ordinal 13 Generated Asset Determinism Remediation (Issue #32)
+
+- Root cause: the gate compared PNG bytes, including `deflateSync`'s platform/zlib-dependent IDAT encoding, rather than the generated image contract; equivalent filtered scanline bytes could fail despite matching dimensions and valid checksums.
+- Authoritative `check-generated` validates signature, exact IHDR/IDAT/IEND envelope, CRCs, IHDR, bounded complete inflation, and filtered scanline bytes; delivery only compares dimensions/IHDR-derived data and filtered scanline bytes, while profile remains byte-exact.
+- Strict TDD: the same-filtered-scanlines/different-deflate test failed RED under explicit Node 24.18.0 and passed GREEN **13/13**; ordinal-13 retry adds bounded decompression plus complete-IDAT-consumption rejection while preserving filtered-scanline-drift rejection.
+- Node 24.18.0 focused generated/delivery checks passed 19/19; typecheck passed; exact retry `npm run verify` passed 303/303, audit 0 vulnerabilities, packaging, and local runtime smoke. Verification left tracked assets/profile unchanged.
+- No live Stream Deck, plugin, profile, native ledger, or GitHub action occurred. Tasks remain 6/13; 3.1/3.2 remain unchecked.
+
 ## Completed Tasks
 
 - [x] 1.1 PR 1A: Node 24 package, strict TypeScript/Rollup/Vitest scaffold, CI, minimal plugin/action compilation, and focused tooling tests.
@@ -83,6 +91,7 @@
 | Historical 3.1/3.2 C2b remediation | `tests/plugin/runtime.test.ts`, `tests/scaffold.test.ts`, `tests/packaging.test.ts`, `tests/ipc/local-event-server.test.ts` | Loopback/plugin integration | 12/12 packaging baseline | Spawn error and startup-budget accounting were absent | Historical full Node24 `npm run verify` 298/298 | ENOENT child error cleanup, delayed READY, bounded no-READY | Once-only child settlement and phase-total deadline |
 | Historical 3.1 rendering remediation (unchecked) | `tests/actions/session-slot.integration.test.ts`, `tests/plugin/session-slot-controller.scheduler.test.ts` | Action/controller integration | 18/18 before edits | Base64 paint/host-contract tests failed on percent-encoded named colors | Historical full Node24 verify 299/299 | Four semantic paints; idle/started; fake host rejects percent encoding | Immutable paint map and semantic scheduler assertions |
 | Current 3.1 unassigned-slot visual contract (unchecked) | `tests/actions/session-slot.integration.test.ts`, `tests/core/reducer.test.ts` | Action/controller integration + unit | Node 24 focused 27/27 | New five-slot gray test failed: expected gray / received green | Targeted 1/1 passed after minimum mapping/reducer change | Focused 28/28 + typecheck: all-gray, three assigned/two gray, acknowledged green, pane-release gray, SVG paint | Current full Node24 verify 300/300 |
+| Current 3.1 packaging remediation (unchecked) | `tests/generated-gate.test.ts`, `tests/delivery.test.ts` | Filesystem/generated-output integration | Node 24 baseline 16/16 | Same filtered scanlines with a valid alternate deflate IDAT failed raw-byte comparison | Authoritative validator passed 18/18 | Re-encoded identical scanlines accepted; scanline drift rejected | Validator: envelope/CRC/IHDR/bounded complete inflate; delivery: dimensions/IHDR-derived data/scanlines |
 
 ## State
 
