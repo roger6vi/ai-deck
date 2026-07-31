@@ -34,6 +34,9 @@ type SessionSlotRenderResult = (typeof SESSION_SLOT_RENDER_RESULT)[keyof typeof 
 export const SESSION_SLOT_RENDER_RETRY_DELAY_MS = 50;
 export const SESSION_SLOT_RENDER_ERROR = "Session slot render failed.";
 export const SESSION_SLOT_NAVIGATION_ERROR = "Session slot navigation unavailable.";
+export const SESSION_SLOT_PERSISTENCE_ERROR = "Session slot state subscriber failed.";
+
+export type SessionStateSubscriber = (state: SessionState) => void | Promise<void>;
 
 export interface SessionSlotClock {
   now(): number;
@@ -99,6 +102,7 @@ export function sessionSlotSvgDataUri(color: SessionSlotColor): string {
 export class SessionSlotController {
   #state = createSessionState();
   #visibleActions = new Map<string, VisibleSessionSlot>();
+  #stateSubscriber: SessionStateSubscriber | undefined = undefined;
 
   constructor(private readonly options: SessionSlotControllerOptions = productionControllerOptions) {}
 
@@ -108,6 +112,16 @@ export class SessionSlotController {
 
   get visibleContextCount(): number {
     return this.#visibleActions.size;
+  }
+
+  subscribeToStateChanges(subscriber: SessionStateSubscriber): () => void {
+    this.#stateSubscriber = subscriber;
+    return () => { if (this.#stateSubscriber === subscriber) this.#stateSubscriber = undefined; };
+  }
+
+  async hydrateState(state: SessionState): Promise<void> {
+    this.#state = state;
+    await this.refresh(this.options.clock.now());
   }
 
   async registerVisibleAction(event: WillAppearEvent): Promise<void> {
@@ -129,8 +143,10 @@ export class SessionSlotController {
   }
 
   async handleStatusEvent(event: LocalAgentStatusEvent, now: number): Promise<void> {
+    const prevState = this.#state;
     this.#state = reduceSessionState(this.#state, { kind: SESSION_REDUCER_ACTION.EVENT, event });
     await this.refresh(now);
+    this.#notifyStateChanged(prevState);
   }
 
   async refresh(now: number): Promise<void> {
@@ -158,6 +174,7 @@ export class SessionSlotController {
       return;
     }
     if (!this.#matchesCurrentAssignment(visible.slotIndex, sessionId, target, assignmentId)) return;
+    const prevState = this.#state;
     if (outcome === NAVIGATION_OUTCOME.MISSING) {
       this.#state = reduceSessionState(this.#state, {
         kind: SESSION_REDUCER_ACTION.PANE_MISSING,
@@ -176,6 +193,7 @@ export class SessionSlotController {
       });
     }
     await this.refresh(now);
+    this.#notifyStateChanged(prevState);
   }
 
   #matchesCurrentAssignment(slotIndex: number, sessionId: string, target: LocalAgentStatusEvent["target"], assignmentId: string): boolean {
@@ -303,6 +321,24 @@ export class SessionSlotController {
     } catch {
       // Navigation failures must remain contained even when local logging fails.
     }
+  }
+
+  #logPersistenceFailure(): void {
+    try {
+      this.options.logger.error(SESSION_SLOT_PERSISTENCE_ERROR);
+    } catch {
+      // Subscriber logging failures must not disrupt the reducer/render loop.
+    }
+  }
+
+  #notifyStateChanged(prevState: SessionState): void {
+    if (this.#state === prevState) return;
+    const subscriber = this.#stateSubscriber;
+    if (subscriber === undefined) return;
+    const snapshot = this.#state;
+    Promise.resolve()
+      .then(() => subscriber(snapshot))
+      .catch(() => this.#logPersistenceFailure());
   }
 
   async #renderVisible(
