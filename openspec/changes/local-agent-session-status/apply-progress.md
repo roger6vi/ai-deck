@@ -52,8 +52,8 @@
 
 ## Partial Task 3: Integration A + B1 + B2 + C1 + C2a + C2b + Remediation
 
-- [ ] 3.1 remains open. Navigation, adapter transport (endpoint client), pure-restore persistence, and pane reconciliation are implemented; per-adapter observers and remaining integration scenarios are pending.
-- [ ] 3.2 remains open. Navigation, adapter transport, persistence, and reconciliation are implemented; per-adapter observers, installers, and remaining safe commands are pending.
+- [ ] 3.1 remains open. Navigation, adapter transport (endpoint client), pure-restore persistence, pane reconciliation, and controller hydration/subscription wiring are implemented; per-adapter observers remain pending.
+- [ ] 3.2 remains open. Navigation, adapter transport, persistence, reconciliation, production wiring in `src/plugin.ts`, and README setup/rollback documentation are implemented; per-adapter observers, installers, and remaining safe commands are pending.
 
 ## Persistence Slice (pure restore)
 
@@ -62,6 +62,14 @@
 - `load()` returns `createSessionState()` on missing file, corrupt contents, insecure ownership (`uid !== ownUid`), or group/world-readable mode. `save(state)` writes to a process-unique temp file with `0o600`, ensures the runtime directory exists with `0o700`, and atomically renames into place; on rename failure it unlinks the temp artifact and throws a fixed generic diagnostic.
 - Recovery reconciliation (re-validating tmux pane existence at startup) is now implemented in `src/persistence/session-state-reconciler.ts`; the next authenticated event still corrects any stale slot naturally when reconciliation is skipped.
 - New unit tests: `tests/persistence/session-state-store.test.ts` (17/17).
+
+## Runtime Wiring and Documentation Slices
+
+- Extended `SessionSlotController` with `hydrateState(state)` and `subscribeToStateChanges(subscriber)`; both `handleStatusEvent` and `handlePhysicalKeyDown` now notify the subscriber only when reduce actually changes state (dedupe), and subscriber rejections are logged (`SESSION_SLOT_PERSISTENCE_ERROR`) without propagating.
+- Extended `PluginRuntimeController` with optional `hydrateState`/`subscribeToStateChanges`. `startPluginRuntime` accepts an optional `persistence: { load, save, reconcile? }`; when both hydration hooks and persistence are present it loads, optionally reconciles, hydrates before publishing the endpoint, wires save-on-change, and unsubscribes on stop. Load failure logs `PLUGIN_RUNTIME_LOG_MESSAGE.HYDRATION_FAILED` and continues with a fresh state.
+- Wired the production `src/plugin.ts` to build a `PluginRuntimePersistence` from the file-backed session state store, the tmux pane enumerator, and the pure reconciler; persistence is skipped when `process.getuid` is unavailable.
+- Added `README.md` with prerequisites, install/uninstall/rollback flows, troubleshooting for endpoint discovery and stale slots, and the privacy boundary. `tests/readme.test.ts` guards the documented commands and paths.
+- New tests: `tests/plugin/session-hydration.test.ts` (7/7), `tests/plugin/runtime-hydration.test.ts` (5/5), `tests/readme.test.ts` (6/6). Full Node 24 verify: 367/367.
 
 ## Reconciliation Slice
 
@@ -119,6 +127,8 @@
 | Adapter transport slice (unchecked) | `tests/adapters/endpoint-client.test.ts` | Unit (deterministic seams) | Node 24 baseline 312/312 | Missing module → suite fails | 10/10 focused | Endpoint discovery, uid/mode, record allowlist, HTTP status mapping, transport error, budget-timeout at read/stat/HTTP | Full verify 322/322 |
 | Persistence pure-restore slice (unchecked) | `tests/persistence/session-state-store.test.ts` | Unit (deterministic seams) | Node 24 baseline 322/322 | Missing module → suite fails | 17/17 focused | Envelope/slot/target/retired allowlist, UUID/tmux/enum guards, insecure ownership/mode, atomic temp+rename, temp cleanup on rename failure | Full verify 339/339 |
 | Reconciliation slice (unchecked) | `tests/persistence/session-state-reconciler.test.ts` | Unit (deterministic seams) | Node 24 baseline 339/339 | Missing module → suite fails | 10/10 focused | Undefined pane set = no-op, all-present = no-op, missing = release/retire, all-missing, unassigned ignored, retired preserved, enumerator parses/filters/errors | Full verify 349/349 |
+| Runtime hydration + subscription (unchecked) | `tests/plugin/session-hydration.test.ts`, `tests/plugin/runtime-hydration.test.ts` | Unit + runtime | Node 24 baseline 349/349 | Missing hydrateState/subscribeToStateChanges → 7 tests fail; runtime hydration mocks → 4 tests fail | 7/7 controller + 5/5 runtime | Hydration order before publish, reconcile-through-load, subscriber dedupe/unsubscribe/rejection containment, hydration failure fallback | Full verify 361/361 |
+| Production wiring + README (unchecked) | `tests/scaffold.test.ts`, `tests/readme.test.ts` | Integration + docs | Node 24 baseline 361/361 | scaffold mock missing `derivePluginRootFromBundledModuleUrl`; missing README | Scaffold restored 5/5, README 6/6 | `src/plugin.ts` builds persistence when `process.getuid` is available, docs guard install/uninstall/rollback/privacy | Full verify 367/367 |
 
 ## State
 
