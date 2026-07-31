@@ -48,4 +48,13 @@ describe("README setup and rollback documentation", () => {
     const readme = await readReadme();
     expect(readme).toContain("npm run verify");
   });
+
+  it("documents the adapter emit CLI and its exit code mapping", async () => {
+    const readme = await readReadme();
+    expect(readme).toContain("src/cli/adapter-emit.ts");
+    expect(readme).toContain("AI_DECK_PLUGIN_ROOT");
+    for (const outcome of ["emitted", "rejected", "unavailable", "timed-out", "local error"]) {
+      expect(readme).toContain(outcome);
+    }
+  });
 });

@@ -104,6 +104,34 @@ This runs the vitest suite, `tsc --noEmit`, production-only
 `npm audit`, plugin packaging and validation, and a bounded runtime
 smoke test.
 
+## Adapter events (per-tool integration)
+
+The plugin listens for authenticated `POST /v1/events` events on the
+loopback endpoint published in `runtime/endpoint.json`. To emit an
+event from any tool wrapper (Codex, OpenCode, Claude, or a custom
+shell hook), use the `runAdapterEmit` helper in `src/cli/adapter-emit.ts`.
+
+During development you can invoke it directly:
+
+```bash
+AI_DECK_PLUGIN_ROOT=/absolute/path/to/com.gentleman.ai-deck.sdPlugin \
+  npx tsx src/cli/adapter-emit.ts \
+    --source codex \
+    --session-id "$SESSION_UUID" \
+    --lifecycle started \
+    --pane-id "$(tmux display-message -p '#{pane_id}')" \
+    --session "$(tmux display-message -p '#{session_id}')"
+```
+
+Exit codes distinguish outcomes: `0` (emitted), `2` (rejected — bad
+args or allowlist violation), `3` (unavailable — no plugin running),
+`4` (timed-out — 200 ms budget exceeded), `5` (local error).
+
+The `runAdapterEmit` function re-validates every candidate event
+through the same allowlist parser used by the plugin, so no prohibited
+field can ever leave the wrapper process. Bundling the CLI as a
+standalone binary for `PATH` install is a documented follow-up.
+
 ## Privacy boundary
 
 The event contract lives in `src/core/types.ts` and `src/core/events.ts`.
