@@ -25,9 +25,9 @@ task_progress:
     - "4.2"
     - "4.3"
 apply_progress:
-  current_slice: C2 pre-PR remediation
-  status: C2a+C2b remediation verified; one remaining PR approved under 1,600-line size exception; remaining integration pending
+  current_slice: Native ordinal 9 SVG rendering remediation
+  status: Physical amber rendered black after HTTP 204; base64 SVG paint remediation is verified, with live restart/event deferred
   implementation: uncommitted
-  verification: Node24 focused packaging 13/13 repeated 3x + typecheck passed; exact npm run verify passed 298/298 spawn/smoke deadline
+  verification: Node24 focused action/controller 19/19 + typecheck passed; exact npm run verify passed 299/299, audit, package validation, and runtime smoke
   blockers: []
-  next_action: prepare one remaining single-pr-default under roger6vi-approved 1,600-line size exception; preserve task checkbox state
+  next_action: await separately authorized live restart/event; preserve 6/13 task checkbox state and do not mutate the native ledger

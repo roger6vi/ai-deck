@@ -69,6 +69,13 @@ function imageFor(action: MockKey): string {
   return image;
 }
 
+const SVG_BASE64_PREFIX = "data:image/svg+xml;base64,";
+
+function decodeSdkSvgImage(image: string): string {
+  if (!image.startsWith(SVG_BASE64_PREFIX)) throw new Error("Unsupported Stream Deck image format.");
+  return Buffer.from(image.slice(SVG_BASE64_PREFIX.length), "base64").toString("utf8");
+}
+
 describe("session slot Stream Deck integration", () => {
   it("registers only row-zero slot contexts and ignores every invalid coordinate safely", async () => {
     const controller = new SessionSlotController();
@@ -145,7 +152,7 @@ describe("session slot Stream Deck integration", () => {
     expect(Object.isFrozen(controller.state)).toBe(true);
   });
 
-  it("uses a deterministic content-free SVG and contains rejected direct renders", async () => {
+  it("uses explicit SVG paints in SDK-supported base64 images and contains rejected direct renders", async () => {
     const controller = new SessionSlotController();
     const rejected = key("rejected", 0);
     rejected.setImage.mockRejectedValueOnce(new Error("offline"));
@@ -154,10 +161,35 @@ describe("session slot Stream Deck integration", () => {
     await controller.refresh(0);
     controller.unregisterVisibleAction(rejected.id);
     await controller.handleStatusEvent(status(), 1);
-    const svg = decodeURIComponent(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.GREEN).replace("data:image/svg+xml,", ""));
+
+    const expectedPaints = [
+      [SESSION_SLOT_COLOR.GREEN, "#008000"],
+      [SESSION_SLOT_COLOR.AMBER, "#FFBF00"],
+      [SESSION_SLOT_COLOR.RED, "#FF0000"],
+      [SESSION_SLOT_COLOR.BLUE, "#0000FF"],
+    ] as const;
 
     expect(rejected.setImage).toHaveBeenCalledTimes(2);
-    expect(svg).toBe('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72"><rect width="72" height="72" fill="green"/></svg>');
-    expect(svg).not.toMatch(/metadata|prompt|session|content/i);
+    for (const [color, paint] of expectedPaints) {
+      const svg = decodeSdkSvgImage(sessionSlotSvgDataUri(color));
+      expect(svg).toBe(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72"><rect width="72" height="72" fill="${paint}"/></svg>`);
+      expect(svg).not.toMatch(/fill="(?:amber|black)"/);
+      expect(svg).not.toMatch(/metadata|prompt|session|content/i);
+    }
+  });
+
+  it("uses green while idle and amber for started sessions through a strict image host", async () => {
+    const controller = new SessionSlotController();
+    const action = key("contract-host", 0);
+    action.setImage.mockImplementation(async (image) => { decodeSdkSvgImage(image ?? ""); });
+
+    await expect(action.setImage("data:image/svg+xml,%3Csvg%3E")).rejects.toThrow("Unsupported Stream Deck image format.");
+    action.setImage.mockClear();
+
+    await controller.registerVisibleAction(appear(action));
+    expect(decodeSdkSvgImage(imageFor(action))).toContain('fill="#008000"');
+
+    await controller.handleStatusEvent(status(), 1);
+    expect(decodeSdkSvgImage(imageFor(action))).toContain('fill="#FFBF00"');
   });
 });

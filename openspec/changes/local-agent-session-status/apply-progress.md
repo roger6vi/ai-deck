@@ -1,5 +1,15 @@
 # Apply Progress: Local Agent Session Status
 
+## Native Ordinal 9 Rendering Remediation
+
+- Failed physical evidence: authenticated `started` returned HTTP 204, but slot 1 rendered black while idle slots 2–5 were green.
+- Semantic reducer colors remain `green|amber|red|blue`; immutable SVG paint mapping uses `#008000`, `#FFBF00`, `#FF0000`, and `#0000FF`.
+- Renderer now emits documented `data:image/svg+xml;base64,...` SVG, never the unsupported percent-encoded form.
+- Strict fake-host coverage decodes all paints, rejects percent-encoded images, and proves idle green / started amber; existing physical acknowledgement and scheduler tests remain.
+- Verified Node 24.18.0: focused action/controller 19/19 + typecheck; exact `npm run verify` once, 299/299, audit clean, package validation, and runtime smoke.
+- Ready for a separately authorized live restart/event only; none occurred. Tasks remain 6/13 and all unchecked tasks stay unchecked.
+- Evidence revision: `sha256:f85bb5c8d2315a7871602a60b87f705747545b6f081e491442306762e2175923`.
+
 ## Completed Tasks
 
 - [x] 1.1 PR 1A: Node 24 package, strict TypeScript/Rollup/Vitest scaffold, CI, minimal plugin/action compilation, and focused tooling tests.
@@ -50,6 +60,7 @@
 | 3.1/3.2 C1 | `tests/ipc/local-event-server.test.ts` | Real loopback | 10/10 | Protocol/timeout/capacity failures | Passed | Auth/address/raw headers/sockets/callback limits | Bounded terminal guard/payload helpers |
 | 3.1/3.2 C2a remediation | `tests/ipc/endpoint-discovery.test.ts` | Filesystem integration | 9/9 | No-op cleanup removal/atomic barrier coverage | Focused Node24 pass | Exact rename-barrier records, root/runtime symlinks, unsafe mode/owner seam, invalid boundaries, publication failures | Readable trusted-root contract |
 | 3.1/3.2 C2b remediation | `tests/plugin/runtime.test.ts`, `tests/scaffold.test.ts`, `tests/packaging.test.ts`, `tests/ipc/local-event-server.test.ts` | Loopback/plugin integration | 12/12 packaging baseline | Spawn error and startup-budget accounting were absent | 13/13 focused Node24 repeated 3x + typecheck; exact full Node24 `npm run verify` 298/298 | ENOENT child error cleanup, delayed READY, bounded no-READY | Once-only child settlement and phase-total deadline |
+| 3.1 rendering remediation (unchecked) | `tests/actions/session-slot.integration.test.ts`, `tests/plugin/session-slot-controller.scheduler.test.ts` | Action/controller integration | 18/18 before edits | Base64 paint/host-contract tests failed on percent-encoded named colors | Focused 19/19 + typecheck; exact full Node24 verify 299/299 | Four semantic paints; idle/started; fake host rejects percent encoding | Immutable paint map and semantic scheduler assertions |
 
 ## State
 

@@ -8,11 +8,11 @@ import {
   SESSION_REDUCER_LIMITS,
   type SessionState,
 } from "../core/reducer";
-import { SESSION_COLOR_LIMITS, SESSION_SLOT_COLOR, type SessionSlotColor } from "../core/colors";
+import { SESSION_COLOR_LIMITS, SESSION_SLOT_COLOR, SESSION_SLOT_SVG_PAINT, type SessionSlotColor } from "../core/colors";
 import { SESSION_STATUS, type LocalAgentStatusEvent } from "../core/types";
 
 const SESSION_SLOT_IMAGE = {
-  PREFIX: "data:image/svg+xml,",
+  PREFIX: "data:image/svg+xml;base64,",
   SIZE: 72,
   ROW: 0,
 } as const;
@@ -83,8 +83,8 @@ function slotIndexFor(event: WillAppearEvent): number | undefined {
 }
 
 export function sessionSlotSvgDataUri(color: SessionSlotColor): string {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SESSION_SLOT_IMAGE.SIZE} ${SESSION_SLOT_IMAGE.SIZE}"><rect width="${SESSION_SLOT_IMAGE.SIZE}" height="${SESSION_SLOT_IMAGE.SIZE}" fill="${color}"/></svg>`;
-  return `${SESSION_SLOT_IMAGE.PREFIX}${encodeURIComponent(svg)}`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SESSION_SLOT_IMAGE.SIZE} ${SESSION_SLOT_IMAGE.SIZE}"><rect width="${SESSION_SLOT_IMAGE.SIZE}" height="${SESSION_SLOT_IMAGE.SIZE}" fill="${SESSION_SLOT_SVG_PAINT[color]}"/></svg>`;
+  return `${SESSION_SLOT_IMAGE.PREFIX}${Buffer.from(svg).toString("base64")}`;
 }
 
 export class SessionSlotController {
