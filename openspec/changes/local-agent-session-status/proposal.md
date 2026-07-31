@@ -8,7 +8,7 @@ Build a local-only Stream Deck view that shows five terminal agent session state
 
 ### In Scope
 - Five keys on the original 15-key Stream Deck, assigned first-free and stable while each session exists.
-- Colors: green idle/free/read, amber running under five minutes, red error or running over five minutes, blue completed with unread response.
+- Colors: gray free/unassigned/disabled; green assigned idle/read or physically acknowledged; amber assigned running under five minutes; red assigned error or running over five minutes; blue assigned completed with unread response.
 - Optional local adapters: Codex and OpenCode on the personal Mac; Claude Code on the work Mac.
 - Pressing an assigned key activates Ghostty, selects the captured tmux pane, and acknowledges blue; missing panes release keys immediately.
 - Plugin packaging/export and hardware acceptance using the existing two OpenCode sessions.

@@ -92,7 +92,7 @@ describe("session status reducer", () => {
   it("derives free, running, overdue, completed, error, and acknowledged colors at the exact boundary", () => {
     let state = apply(createSessionState(), event({ timestamp: 0 }));
     const runningSlot = state.slots[0];
-    expect(deriveSlotColor(state.slots[1], 0)).toBe(SESSION_SLOT_COLOR.GREEN);
+    expect(deriveSlotColor(state.slots[1], 0)).toBe(SESSION_SLOT_COLOR.GRAY);
     expect(deriveSlotColor(runningSlot, FIVE_MINUTES - 1)).toBe(SESSION_SLOT_COLOR.AMBER);
     expect(deriveSlotColor(runningSlot, FIVE_MINUTES)).toBe(SESSION_SLOT_COLOR.RED);
     expect(runningSlot?.lifecycle).toBe(SESSION_STATUS.STARTED);

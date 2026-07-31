@@ -3,7 +3,7 @@
 ## ADDED Requirements
 
 ### Requirement: Five-key state
-The system MUST expose exactly five session keys, assign first-free, and keep each assignment stable while its session and recorded pane exist. Concurrent sessions MUST be independent. Colors MUST be green idle/free/read, amber running under five minutes, red error or running at/over five minutes, and blue completed unread. Five-minute red MUST be advisory and MUST NOT cancel work. Only physical press on the assigned key MUST acknowledge blue.
+The system MUST expose exactly five session keys, assign first-free, and keep each assignment stable while its session and recorded pane exist. Concurrent sessions MUST be independent. With N assigned sessions (0..5), exactly N keys MUST show assigned-state colors and the remaining 5-N keys MUST render disabled gray. Green MUST denote an assigned session that is idle/read or has been physically acknowledged/read; it MUST NOT denote free capacity. Amber MUST denote an assigned session running under five minutes. Red MUST denote an assigned session that has errored or has run for at least five minutes; red MUST be advisory and MUST NOT cancel work. Blue MUST denote an assigned session completed and unread. Only physical press on the assigned key MUST acknowledge blue. Pane disappearance MUST immediately release the assignment and return that key to disabled gray.
 
 #### Scenario: Two OpenCode sessions
 - GIVEN two OpenCode sessions and five free keys
@@ -29,3 +29,23 @@ The system MUST expose exactly five session keys, assign first-free, and keep ea
 - GIVEN duplicate or stale lifecycle events arrive
 - WHEN they are processed
 - THEN state remains deterministic and no false acknowledgement occurs
+
+#### Scenario: Initial state after restart
+- GIVEN the plugin starts or restarts with no session assignments
+- WHEN the five keys render
+- THEN all five keys are disabled gray and none is green for free capacity
+
+#### Scenario: Partial capacity
+- GIVEN three sessions are assigned and two keys are free
+- WHEN the five keys render
+- THEN exactly three keys show assigned-state colors and exactly two keys are disabled gray
+
+#### Scenario: Acknowledged assigned session
+- GIVEN an assigned session is completed and unread on a blue key and its pane exists
+- WHEN the user physically presses that assigned key
+- THEN the key becomes green as acknowledged/read and the assignment remains
+
+#### Scenario: Pane disappearance releases a key
+- GIVEN an assigned key has a recorded pane
+- WHEN that pane disappears
+- THEN the assignment is released immediately and the key becomes disabled gray

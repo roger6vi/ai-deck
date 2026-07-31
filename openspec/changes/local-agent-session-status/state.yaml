@@ -25,9 +25,10 @@ task_progress:
     - "4.2"
     - "4.3"
 apply_progress:
-  current_slice: Native ordinal 9 SVG rendering remediation
-  status: Physical amber rendered black after HTTP 204; base64 SVG paint remediation is verified, with live restart/event deferred
+  current_slice: Native ordinal 11 unassigned-slot visual contract
+  status: Base64 SVG rendering remediation and the clarified disabled-gray unassigned-slot contract are verified; no live hardware action occurred
   implementation: uncommitted
-  verification: Node24 focused action/controller 19/19 + typecheck passed; exact npm run verify passed 299/299, audit, package validation, and runtime smoke
+  verification: Node24 focused action/controller/reducer 28/28 + typecheck passed; exact npm run verify passed 300/300, audit, package validation, and bounded runtime smoke
   blockers: []
-  next_action: await separately authorized live restart/event; preserve 6/13 task checkbox state and do not mutate the native ledger
+  requirement_amendment: unassigned slots gray; green only for assigned acknowledged/read sessions; exact N assigned colors plus 5-N gray; immediate gray release on pane disappearance; initial all-gray state
+  next_action: continue deferred 3.1/3.2 navigation, persistence, adapter, installer, recovery, and integration scope; preserve 6/13 task checkbox state and do not mutate the native ledger

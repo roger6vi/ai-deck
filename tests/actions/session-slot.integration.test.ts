@@ -19,7 +19,10 @@ vi.mock("@elgato/streamdeck", () => ({
 const SESSION_IDS = [
   "123e4567-e89b-42d3-a456-426614174000",
   "223e4567-e89b-42d3-a456-426614174000",
+  "323e4567-e89b-42d3-a456-426614174000",
 ] as const;
+
+const DISABLED_GRAY_PAINT = "#6B7280";
 
 interface MockKey {
   readonly id: string;
@@ -77,6 +80,41 @@ function decodeSdkSvgImage(image: string): string {
 }
 
 describe("session slot Stream Deck integration", () => {
+  it("renders free slots disabled gray, preserves assigned green after physical acknowledgement, and releases disappeared panes to gray", async () => {
+    const controller = new SessionSlotController();
+    const action = new SessionSlotActionBase(controller, () => 4);
+    const keys = Array.from({ length: SESSION_REDUCER_LIMITS.SLOT_COUNT }, (_, index) => key(`key-${index}`, index));
+    const first = keys[0];
+    const second = keys[1];
+    if (first === undefined || second === undefined) throw new Error("Expected five visible session keys.");
+    await Promise.all(keys.map((visible) => action.onWillAppear(appear(visible))));
+
+    expect(keys).toHaveLength(SESSION_REDUCER_LIMITS.SLOT_COUNT);
+    expect(keys.map(imageFor)).toEqual(keys.map(() => sessionSlotSvgDataUri(SESSION_SLOT_COLOR.GRAY)));
+    for (const visible of keys) expect(decodeSdkSvgImage(imageFor(visible))).toContain(`fill="${DISABLED_GRAY_PAINT}"`);
+
+    await controller.handleStatusEvent(status(), 1);
+    await controller.handleStatusEvent(status({ eventId: "de305d54-75b4-431b-adb2-eb6b9e546002", sessionId: SESSION_IDS[1], timestamp: 2 }), 2);
+    await controller.handleStatusEvent(status({ eventId: "de305d54-75b4-431b-adb2-eb6b9e546003", sessionId: SESSION_IDS[2], timestamp: 3 }), 3);
+
+    expect(keys.map(imageFor)).toEqual([
+      sessionSlotSvgDataUri(SESSION_SLOT_COLOR.AMBER),
+      sessionSlotSvgDataUri(SESSION_SLOT_COLOR.AMBER),
+      sessionSlotSvgDataUri(SESSION_SLOT_COLOR.AMBER),
+      sessionSlotSvgDataUri(SESSION_SLOT_COLOR.GRAY),
+      sessionSlotSvgDataUri(SESSION_SLOT_COLOR.GRAY),
+    ]);
+
+    await controller.handleStatusEvent(status({ eventId: "de305d54-75b4-431b-adb2-eb6b9e546004", lifecycle: SESSION_STATUS.COMPLETED, timestamp: 4 }), 4);
+    await action.onKeyDown({ action: first as unknown as KeyAction } as KeyDownEvent);
+    expect(imageFor(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.GREEN));
+    expect(controller.state.slots[0]?.sessionId).toBe(SESSION_IDS[0]);
+
+    await controller.handleStatusEvent(status({ eventId: "de305d54-75b4-431b-adb2-eb6b9e546005", lifecycle: SESSION_STATUS.PANE_DISAPPEARED, sessionId: SESSION_IDS[1], timestamp: 5 }), 5);
+    expect(imageFor(second)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.GRAY));
+    expect(controller.state.slots[1]?.sessionId).toBeUndefined();
+  });
+
   it("registers only row-zero slot contexts and ignores every invalid coordinate safely", async () => {
     const controller = new SessionSlotController();
     const keys = Array.from({ length: SESSION_REDUCER_LIMITS.SLOT_COUNT }, (_, index) => key(`key-${index}`, index));
@@ -86,7 +124,7 @@ describe("session slot Stream Deck integration", () => {
     await Promise.all(invalid.map((action) => controller.registerVisibleAction(appear(action))));
     await controller.registerVisibleAction(appear(key("dial", 0), "Encoder"));
 
-    expect(keys.map(imageFor)).toEqual(keys.map(() => sessionSlotSvgDataUri(SESSION_SLOT_COLOR.GREEN)));
+    expect(keys.map(imageFor)).toEqual(keys.map(() => sessionSlotSvgDataUri(SESSION_SLOT_COLOR.GRAY)));
     expect(controller.visibleContextCount).toBe(SESSION_REDUCER_LIMITS.SLOT_COUNT);
   });
 
@@ -109,7 +147,7 @@ describe("session slot Stream Deck integration", () => {
 
     expect([imageFor(first), imageFor(second)]).toEqual([
       sessionSlotSvgDataUri(SESSION_SLOT_COLOR.BLUE),
-      sessionSlotSvgDataUri(SESSION_SLOT_COLOR.GREEN),
+      sessionSlotSvgDataUri(SESSION_SLOT_COLOR.GRAY),
     ]);
     expect(first.setImage).toHaveBeenCalledTimes(4);
     expect(second.setImage).toHaveBeenCalledTimes(1);
@@ -147,7 +185,7 @@ describe("session slot Stream Deck integration", () => {
     await action.onWillAppear(appear(first));
     await controller.handleStatusEvent(status({ eventId: "de305d54-75b4-431b-adb2-eb6b9e546003", lifecycle: SESSION_STATUS.PANE_DISAPPEARED, timestamp: 3 }), 3);
     expect(controller.state.slots[0]?.sessionId).toBeUndefined();
-    expect(imageFor(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.GREEN));
+    expect(imageFor(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.GRAY));
     expect(imageFor(second)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.AMBER));
     expect(Object.isFrozen(controller.state)).toBe(true);
   });
@@ -163,6 +201,7 @@ describe("session slot Stream Deck integration", () => {
     await controller.handleStatusEvent(status(), 1);
 
     const expectedPaints = [
+      [SESSION_SLOT_COLOR.GRAY, DISABLED_GRAY_PAINT],
       [SESSION_SLOT_COLOR.GREEN, "#008000"],
       [SESSION_SLOT_COLOR.AMBER, "#FFBF00"],
       [SESSION_SLOT_COLOR.RED, "#FF0000"],
@@ -178,7 +217,7 @@ describe("session slot Stream Deck integration", () => {
     }
   });
 
-  it("uses green while idle and amber for started sessions through a strict image host", async () => {
+  it("uses disabled gray while unassigned and amber for started sessions through a strict image host", async () => {
     const controller = new SessionSlotController();
     const action = key("contract-host", 0);
     action.setImage.mockImplementation(async (image) => { decodeSdkSvgImage(image ?? ""); });
@@ -187,7 +226,7 @@ describe("session slot Stream Deck integration", () => {
     action.setImage.mockClear();
 
     await controller.registerVisibleAction(appear(action));
-    expect(decodeSdkSvgImage(imageFor(action))).toContain('fill="#008000"');
+    expect(decodeSdkSvgImage(imageFor(action))).toContain(`fill="${DISABLED_GRAY_PAINT}"`);
 
     await controller.handleStatusEvent(status(), 1);
     expect(decodeSdkSvgImage(imageFor(action))).toContain('fill="#FFBF00"');

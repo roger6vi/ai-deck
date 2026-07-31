@@ -2,6 +2,7 @@ import { SESSION_STATUS } from "./types";
 import type { SessionSlot } from "./reducer";
 
 export const SESSION_SLOT_COLOR = {
+  GRAY: "gray",
   GREEN: "green",
   AMBER: "amber",
   RED: "red",
@@ -11,6 +12,7 @@ export const SESSION_SLOT_COLOR = {
 export type SessionSlotColor = (typeof SESSION_SLOT_COLOR)[keyof typeof SESSION_SLOT_COLOR];
 
 export const SESSION_SLOT_SVG_PAINT = Object.freeze({
+  [SESSION_SLOT_COLOR.GRAY]: "#6B7280",
   [SESSION_SLOT_COLOR.GREEN]: "#008000",
   [SESSION_SLOT_COLOR.AMBER]: "#FFBF00",
   [SESSION_SLOT_COLOR.RED]: "#FF0000",
@@ -23,7 +25,7 @@ export const SESSION_COLOR_LIMITS = {
 
 export function deriveSlotColor(slot: SessionSlot | undefined, now: number): SessionSlotColor {
   if (slot === undefined || slot.sessionId === undefined || slot.lifecycle === undefined) {
-    return SESSION_SLOT_COLOR.GREEN;
+    return SESSION_SLOT_COLOR.GRAY;
   }
   if (slot.lifecycle === SESSION_STATUS.ERROR) return SESSION_SLOT_COLOR.RED;
   if (slot.lifecycle === SESSION_STATUS.COMPLETED) {
