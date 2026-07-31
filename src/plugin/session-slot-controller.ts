@@ -10,6 +10,12 @@ import {
 } from "../core/reducer";
 import { SESSION_COLOR_LIMITS, SESSION_SLOT_COLOR, SESSION_SLOT_SVG_PAINT, type SessionSlotColor } from "../core/colors";
 import { SESSION_STATUS, type LocalAgentStatusEvent } from "../core/types";
+import {
+  NAVIGATION_OUTCOME,
+  ghosttyTmuxNavigator,
+  type AssignedTargetNavigator,
+  type NavigationOutcome,
+} from "../navigation/ghostty-tmux";
 
 const SESSION_SLOT_IMAGE = {
   PREFIX: "data:image/svg+xml;base64,",
@@ -27,6 +33,7 @@ type SessionSlotRenderResult = (typeof SESSION_SLOT_RENDER_RESULT)[keyof typeof 
 
 export const SESSION_SLOT_RENDER_RETRY_DELAY_MS = 50;
 export const SESSION_SLOT_RENDER_ERROR = "Session slot render failed.";
+export const SESSION_SLOT_NAVIGATION_ERROR = "Session slot navigation unavailable.";
 
 export interface SessionSlotClock {
   now(): number;
@@ -45,6 +52,7 @@ export interface SessionSlotControllerOptions {
   readonly clock: SessionSlotClock;
   readonly scheduler: SessionSlotScheduler;
   readonly logger: SessionSlotLogger;
+  readonly navigator?: AssignedTargetNavigator;
 }
 
 const productionControllerOptions: SessionSlotControllerOptions = {
@@ -56,6 +64,7 @@ const productionControllerOptions: SessionSlotControllerOptions = {
   logger: {
     error: (message) => streamDeck.logger.error(message),
   },
+  navigator: ghosttyTmuxNavigator,
 };
 
 interface VisibleSessionSlot {
@@ -131,11 +140,54 @@ export class SessionSlotController {
   async handlePhysicalKeyDown(contextId: string, now: number): Promise<void> {
     const visible = this.#visibleActions.get(contextId);
     if (visible === undefined) return;
-    this.#state = reduceSessionState(this.#state, {
-      kind: SESSION_REDUCER_ACTION.PHYSICAL_KEY_DOWN,
-      slotIndex: visible.slotIndex,
-    });
+    const slot = this.#state.slots[visible.slotIndex];
+    if (slot?.sessionId === undefined || slot.target === undefined) return;
+    const sessionId = slot.sessionId;
+    const target = slot.target;
+    const assignmentId = slot.assignmentId;
+    if (assignmentId === undefined) return;
+    let outcome: NavigationOutcome;
+    try {
+      outcome = await (this.options.navigator ?? ghosttyTmuxNavigator).navigate(target);
+    } catch {
+      this.#logNavigationFailure();
+      return;
+    }
+    if (outcome === NAVIGATION_OUTCOME.UNAVAILABLE) {
+      this.#logNavigationFailure();
+      return;
+    }
+    if (!this.#matchesCurrentAssignment(visible.slotIndex, sessionId, target, assignmentId)) return;
+    if (outcome === NAVIGATION_OUTCOME.MISSING) {
+      this.#state = reduceSessionState(this.#state, {
+        kind: SESSION_REDUCER_ACTION.PANE_MISSING,
+        slotIndex: visible.slotIndex,
+        sessionId,
+        target,
+        assignmentId,
+      });
+    } else {
+      this.#state = reduceSessionState(this.#state, {
+        kind: SESSION_REDUCER_ACTION.PHYSICAL_KEY_DOWN,
+        slotIndex: visible.slotIndex,
+        sessionId,
+        target,
+        assignmentId,
+      });
+    }
     await this.refresh(now);
+  }
+
+  #matchesCurrentAssignment(slotIndex: number, sessionId: string, target: LocalAgentStatusEvent["target"], assignmentId: string): boolean {
+    const slot = this.#state.slots[slotIndex];
+    return (
+      slot?.sessionId === sessionId &&
+      slot.assignmentId === assignmentId &&
+      slot.target?.tmuxPaneId === target.tmuxPaneId &&
+      slot.target.tmuxSession === target.tmuxSession &&
+      slot.target.tmuxWindow === target.tmuxWindow &&
+      slot.target.ghosttyBundleId === target.ghosttyBundleId
+    );
   }
 
   dispose(): void {
@@ -242,6 +294,14 @@ export class SessionSlotController {
       this.options.logger.error(SESSION_SLOT_RENDER_ERROR);
     } catch {
       // Logging must not interfere with local rendering recovery.
+    }
+  }
+
+  #logNavigationFailure(): void {
+    try {
+      this.options.logger.error(SESSION_SLOT_NAVIGATION_ERROR);
+    } catch {
+      // Navigation failures must remain contained even when local logging fails.
     }
   }
 

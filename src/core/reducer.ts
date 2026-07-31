@@ -5,6 +5,7 @@ export { deriveSlotColor, SESSION_SLOT_COLOR, SESSION_COLOR_LIMITS } from "./col
 export const SESSION_REDUCER_ACTION = {
   EVENT: "event",
   PHYSICAL_KEY_DOWN: "physical-key-down",
+  PANE_MISSING: "pane-missing",
 } as const;
 
 export const SESSION_REDUCER_LIMITS = {
@@ -14,6 +15,7 @@ export const SESSION_REDUCER_LIMITS = {
 
 export interface SessionSlot {
   readonly index: number;
+  readonly assignmentId?: string;
   readonly sessionId?: string;
   readonly source?: LocalAgentStatusEvent["source"];
   readonly lifecycle?: LocalAgentStatusEvent["lifecycle"];
@@ -45,9 +47,20 @@ export interface SessionEventAction {
 export interface PhysicalKeyDownAction {
   readonly kind: typeof SESSION_REDUCER_ACTION.PHYSICAL_KEY_DOWN;
   readonly slotIndex: number;
+  readonly sessionId?: string;
+  readonly target?: LocalAgentTargetMetadata;
+  readonly assignmentId?: string;
 }
 
-export type SessionReducerAction = SessionEventAction | PhysicalKeyDownAction;
+export interface PaneMissingAction {
+  readonly kind: typeof SESSION_REDUCER_ACTION.PANE_MISSING;
+  readonly slotIndex: number;
+  readonly sessionId: string;
+  readonly target: LocalAgentTargetMetadata;
+  readonly assignmentId: string;
+}
+
+export type SessionReducerAction = SessionEventAction | PhysicalKeyDownAction | PaneMissingAction;
 
 function copyTarget(target: LocalAgentTargetMetadata): LocalAgentTargetMetadata {
   const copied = {
@@ -79,11 +92,12 @@ function isDuplicateOrStale(
   return lastEventId === event.eventId || lastTimestamp === undefined || !isNewer(lastTimestamp, lastSequence, event);
 }
 
-function slotFromEvent(index: number, event: LocalAgentStatusEvent, runningSince?: number): SessionSlot {
+function slotFromEvent(index: number, event: LocalAgentStatusEvent, assignmentId: string, runningSince?: number): SessionSlot {
   const startsRunning = event.lifecycle === SESSION_STATUS.STARTED;
   const isRunning = startsRunning || event.lifecycle === SESSION_STATUS.RUNNING;
   return {
     index,
+    assignmentId,
     sessionId: event.sessionId,
     source: event.source,
     lifecycle: event.lifecycle,
@@ -110,6 +124,22 @@ function addRetired(retiredSessions: readonly RetiredSession[], event: LocalAgen
     .slice(-SESSION_REDUCER_LIMITS.RETIRED_SESSION_LIMIT);
 }
 
+function addRetiredSlot(retiredSessions: readonly RetiredSession[], slot: SessionSlot): readonly RetiredSession[] {
+  if (slot.sessionId === undefined || slot.lastEventId === undefined || slot.lastTimestamp === undefined) return retiredSessions;
+  const retired: RetiredSession = {
+    sessionId: slot.sessionId,
+    lastEventId: slot.lastEventId,
+    lastTimestamp: slot.lastTimestamp,
+    ...(slot.lastSequence === undefined ? {} : { lastSequence: slot.lastSequence }),
+  };
+  return [...retiredSessions.filter((session) => session.sessionId !== slot.sessionId), retired]
+    .slice(-SESSION_REDUCER_LIMITS.RETIRED_SESSION_LIMIT);
+}
+
+function matchesAssignment(slot: SessionSlot | undefined, sessionId: string, target: LocalAgentTargetMetadata, assignmentId: string): boolean {
+  return slot?.sessionId === sessionId && slot.assignmentId === assignmentId && slot.target?.tmuxPaneId === target.tmuxPaneId && slot.target.tmuxSession === target.tmuxSession && slot.target.tmuxWindow === target.tmuxWindow && slot.target.ghosttyBundleId === target.ghosttyBundleId;
+}
+
 function reduceEvent(state: SessionState, event: LocalAgentStatusEvent): SessionState {
   const slotIndex = state.slots.findIndex((slot) => slot.sessionId === event.sessionId);
   if (slotIndex >= 0) {
@@ -121,7 +151,7 @@ function reduceEvent(state: SessionState, event: LocalAgentStatusEvent): Session
       const slots = state.slots.map((current) => current.index === slotIndex ? { index: slotIndex } : current);
       return freezeState(slots, addRetired(state.retiredSessions, event));
     }
-    const slots = state.slots.map((current) => current.index === slotIndex ? slotFromEvent(slotIndex, event, slot.runningSince) : current);
+    const slots = state.slots.map((current) => current.index === slotIndex ? slotFromEvent(slotIndex, event, slot.assignmentId ?? event.eventId, slot.runningSince) : current);
     return freezeState(slots, state.retiredSessions);
   }
 
@@ -136,18 +166,32 @@ function reduceEvent(state: SessionState, event: LocalAgentStatusEvent): Session
 
   const freeSlot = state.slots.find((slot) => slot.sessionId === undefined);
   if (freeSlot === undefined) return state;
-  const slots = state.slots.map((slot) => slot.index === freeSlot.index ? slotFromEvent(slot.index, event) : slot);
+  const slots = state.slots.map((slot) => slot.index === freeSlot.index ? slotFromEvent(slot.index, event, event.eventId) : slot);
   const retiredSessions = retired === undefined
     ? state.retiredSessions
     : state.retiredSessions.filter((session) => session.sessionId !== event.sessionId);
   return freezeState(slots, retiredSessions);
 }
 
-function reducePhysicalKeyDown(state: SessionState, slotIndex: number): SessionState {
+function reducePhysicalKeyDown(
+  state: SessionState,
+  slotIndex: number,
+  sessionId?: string,
+  target?: LocalAgentTargetMetadata,
+  assignmentId?: string,
+): SessionState {
   const slot = state.slots[slotIndex];
+  if ((sessionId !== undefined || target !== undefined || assignmentId !== undefined) && (sessionId === undefined || target === undefined || assignmentId === undefined || !matchesAssignment(slot, sessionId, target, assignmentId))) return state;
   if (slot?.lifecycle !== SESSION_STATUS.COMPLETED || slot.acknowledged) return state;
   const slots = state.slots.map((current) => current.index === slotIndex ? { ...current, acknowledged: true } : current);
   return freezeState(slots, state.retiredSessions);
+}
+
+function reducePaneMissing(state: SessionState, action: PaneMissingAction): SessionState {
+  const slot = state.slots[action.slotIndex];
+  if (slot === undefined || !matchesAssignment(slot, action.sessionId, action.target, action.assignmentId)) return state;
+  const slots = state.slots.map((current) => current.index === action.slotIndex ? { index: action.slotIndex } : current);
+  return freezeState(slots, addRetiredSlot(state.retiredSessions, slot));
 }
 
 export function createSessionState(): SessionState {
@@ -157,5 +201,6 @@ export function createSessionState(): SessionState {
 
 export function reduceSessionState(state: SessionState, action: SessionReducerAction): SessionState {
   if (action.kind === SESSION_REDUCER_ACTION.EVENT) return reduceEvent(state, action.event);
-  return reducePhysicalKeyDown(state, action.slotIndex);
+  if (action.kind === SESSION_REDUCER_ACTION.PANE_MISSING) return reducePaneMissing(state, action);
+  return reducePhysicalKeyDown(state, action.slotIndex, action.sessionId, action.target, action.assignmentId);
 }

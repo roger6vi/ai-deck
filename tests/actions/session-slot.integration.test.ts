@@ -6,7 +6,9 @@ import { SessionSlotActionBase } from "../../src/actions/session-slot-base";
 import { SESSION_COLOR_LIMITS, SESSION_SLOT_COLOR } from "../../src/core/colors";
 import { SESSION_REDUCER_LIMITS } from "../../src/core/reducer";
 import { SESSION_STATUS, type LocalAgentStatusEvent } from "../../src/core/types";
+import { NAVIGATION_OUTCOME, type AssignedTargetNavigator } from "../../src/navigation/ghostty-tmux";
 import {
+  SESSION_SLOT_NAVIGATION_ERROR,
   SessionSlotController,
   sessionSlotSvgDataUri,
 } from "../../src/plugin/session-slot-controller";
@@ -35,6 +37,7 @@ interface EventOptions {
   readonly lifecycle?: LocalAgentStatusEvent["lifecycle"];
   readonly sessionId?: string;
   readonly timestamp?: number;
+  readonly tmuxPaneId?: string;
 }
 
 function key(id: string, column?: number, row = 0): MockKey {
@@ -62,8 +65,17 @@ function status(options: EventOptions = {}): LocalAgentStatusEvent {
     sequence: timestamp,
     timestamp,
     lifecycle: options.lifecycle ?? SESSION_STATUS.STARTED,
-    target: { tmuxPaneId: `%${timestamp}`, tmuxSession: "$0", ghosttyBundleId: "com.mitchellh.ghostty" },
+      target: { tmuxPaneId: options.tmuxPaneId ?? `%${timestamp}`, tmuxSession: "$0", ghosttyBundleId: "com.mitchellh.ghostty" },
   };
+}
+
+function controllerWith(navigator: AssignedTargetNavigator, logger = vi.fn()): SessionSlotController {
+  return new SessionSlotController({
+    clock: { now: () => 10 },
+    scheduler: { schedule: () => 0, cancel: () => undefined },
+    logger: { error: logger },
+    navigator,
+  });
 }
 
 function imageFor(action: MockKey): string {
@@ -81,7 +93,8 @@ function decodeSdkSvgImage(image: string): string {
 
 describe("session slot Stream Deck integration", () => {
   it("renders free slots disabled gray, preserves assigned green after physical acknowledgement, and releases disappeared panes to gray", async () => {
-    const controller = new SessionSlotController();
+    const navigate = vi.fn<AssignedTargetNavigator["navigate"]>().mockResolvedValue(NAVIGATION_OUTCOME.NAVIGATED);
+    const controller = controllerWith({ navigate });
     const action = new SessionSlotActionBase(controller, () => 4);
     const keys = Array.from({ length: SESSION_REDUCER_LIMITS.SLOT_COUNT }, (_, index) => key(`key-${index}`, index));
     const first = keys[0];
@@ -109,6 +122,7 @@ describe("session slot Stream Deck integration", () => {
     await action.onKeyDown({ action: first as unknown as KeyAction } as KeyDownEvent);
     expect(imageFor(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.GREEN));
     expect(controller.state.slots[0]?.sessionId).toBe(SESSION_IDS[0]);
+    expect(navigate).toHaveBeenCalledWith({ tmuxPaneId: "%4", tmuxSession: "$0", ghosttyBundleId: "com.mitchellh.ghostty" });
 
     await controller.handleStatusEvent(status({ eventId: "de305d54-75b4-431b-adb2-eb6b9e546005", lifecycle: SESSION_STATUS.PANE_DISAPPEARED, sessionId: SESSION_IDS[1], timestamp: 5 }), 5);
     expect(imageFor(second)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.GRAY));
@@ -116,7 +130,7 @@ describe("session slot Stream Deck integration", () => {
   });
 
   it("registers only row-zero slot contexts and ignores every invalid coordinate safely", async () => {
-    const controller = new SessionSlotController();
+    const controller = controllerWith({ navigate: vi.fn().mockResolvedValue(NAVIGATION_OUTCOME.NAVIGATED) });
     const keys = Array.from({ length: SESSION_REDUCER_LIMITS.SLOT_COUNT }, (_, index) => key(`key-${index}`, index));
     const invalid = [key("missing"), key("row", 0, 1), key("negative", -1), key("past", SESSION_REDUCER_LIMITS.SLOT_COUNT), key("fraction", 0.5), key("nan", Number.NaN), key("infinity", Number.POSITIVE_INFINITY)];
 
@@ -154,7 +168,7 @@ describe("session slot Stream Deck integration", () => {
   });
 
   it("never acknowledges on visibility and only an assigned physical key press changes blue to green", async () => {
-    const controller = new SessionSlotController();
+    const controller = controllerWith({ navigate: vi.fn().mockResolvedValue(NAVIGATION_OUTCOME.NAVIGATED) });
     const action = new SessionSlotActionBase(controller, () => 2);
     const first = key("first", 0);
     await action.onWillAppear(appear(first));
@@ -230,5 +244,48 @@ describe("session slot Stream Deck integration", () => {
 
     await controller.handleStatusEvent(status(), 1);
     expect(decodeSdkSvgImage(imageFor(action))).toContain('fill="#FFBF00"');
+  });
+
+  it("releases only a still-matching missing target and retains ambiguous completed assignments as acknowledged", async () => {
+    const controller = controllerWith({ navigate: vi.fn().mockResolvedValue(NAVIGATION_OUTCOME.MISSING) }); const action = new SessionSlotActionBase(controller, () => 2); const first = key("first", 0);
+    await action.onWillAppear(appear(first));
+    await controller.handleStatusEvent(status({ tmuxPaneId: "%1" }), 1);
+    await action.onKeyDown({ action: first as unknown as KeyAction } as KeyDownEvent);
+    expect(controller.state.slots[0]?.sessionId).toBeUndefined();
+    expect(imageFor(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.GRAY));
+    const ambiguousController = controllerWith({ navigate: vi.fn().mockResolvedValue(NAVIGATION_OUTCOME.AMBIGUOUS) }); const ambiguousAction = new SessionSlotActionBase(ambiguousController, () => 2); const ambiguousKey = key("ambiguous", 0);
+    await ambiguousAction.onWillAppear(appear(ambiguousKey));
+    await ambiguousController.handleStatusEvent(status({ tmuxPaneId: "%2" }), 1);
+    await ambiguousController.handleStatusEvent(status({ eventId: "de305d54-75b4-431b-adb2-eb6b9e546002", lifecycle: SESSION_STATUS.COMPLETED, tmuxPaneId: "%2", timestamp: 2 }), 2);
+
+    await ambiguousAction.onKeyDown({ action: ambiguousKey as unknown as KeyAction } as KeyDownEvent);
+    expect(ambiguousController.state.slots[0]?.sessionId).toBe(SESSION_IDS[0]);
+    expect(imageFor(ambiguousKey)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.GREEN));
+  });
+
+  it("contains unavailable navigation without acknowledging or exposing process details, and ignores unassigned presses", async () => {
+    const logger = vi.fn(); const navigate = vi.fn<AssignedTargetNavigator["navigate"]>().mockRejectedValue(new Error("sensitive stdout target %99")); const controller = controllerWith({ navigate }, logger); const action = new SessionSlotActionBase(controller, () => 2); const first = key("first", 0); const free = key("free", 1);
+    await action.onWillAppear(appear(first)); await action.onWillAppear(appear(free));
+    await controller.handleStatusEvent(status(), 1);
+    await controller.handleStatusEvent(status({ eventId: "de305d54-75b4-431b-adb2-eb6b9e546002", lifecycle: SESSION_STATUS.COMPLETED, timestamp: 2 }), 2);
+
+    await action.onKeyDown({ action: first as unknown as KeyAction } as KeyDownEvent); await action.onKeyDown({ action: free as unknown as KeyAction } as KeyDownEvent);
+    expect(imageFor(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.BLUE));
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(logger).toHaveBeenCalledWith(SESSION_SLOT_NAVIGATION_ERROR);
+    expect(logger.mock.calls.flat()).not.toContain("sensitive stdout target %99");
+  });
+
+  it("does not let a delayed missing result mutate a restarted same-value assignment", async () => {
+    let resolveNavigation: ((outcome: typeof NAVIGATION_OUTCOME.MISSING) => void) | undefined;
+    const navigate = vi.fn<AssignedTargetNavigator["navigate"]>().mockImplementation(() => new Promise((resolve) => { resolveNavigation = resolve; })); const controller = controllerWith({ navigate }); const action = new SessionSlotActionBase(controller, () => 2); const first = key("first", 0);
+    await action.onWillAppear(appear(first));
+    await controller.handleStatusEvent(status({ tmuxPaneId: "%1" }), 1);
+    const press = action.onKeyDown({ action: first as unknown as KeyAction } as KeyDownEvent);
+    await controller.handleStatusEvent(status({ eventId: "de305d54-75b4-431b-adb2-eb6b9e546002", lifecycle: SESSION_STATUS.PANE_DISAPPEARED, tmuxPaneId: "%1", timestamp: 2 }), 2);
+    await controller.handleStatusEvent(status({ eventId: "de305d54-75b4-431b-adb2-eb6b9e546003", lifecycle: SESSION_STATUS.STARTED, tmuxPaneId: "%1", timestamp: 3 }), 3);
+    if (resolveNavigation === undefined) throw new Error("Expected navigation to begin."); resolveNavigation(NAVIGATION_OUTCOME.MISSING); await press;
+    expect(controller.state.slots[0]?.sessionId).toBe(SESSION_IDS[0]);
+    expect(imageFor(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.AMBER));
   });
 });
