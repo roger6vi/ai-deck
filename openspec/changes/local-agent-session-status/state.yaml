@@ -25,10 +25,10 @@ task_progress:
     - "4.2"
     - "4.3"
 apply_progress:
-  current_slice: Approved issue #33 safe assigned-key Ghostty/tmux navigation correction
-  status: argv-only bounded Ghostty/tmux navigation validates exact pane/session/window and client cardinality; immutable assignment IDs guard delayed acknowledgement and release
-  implementation: committed (f7dae69)
-  verification: RED same-value restart and resistant-child bound; focused Node 24 tests 24/24 plus typecheck; exact npm run verify passed 312/312, audit 0 vulnerabilities, package validation, and bounded runtime smoke; no live navigation
+  current_slice: Adapter transport (endpoint client) with 200ms budget and privacy guard
+  status: adapter-side endpoint discovery, ownership/mode validation, allowlisted record parsing, authenticated POST, and fail-open outcome mapping under a 200ms total budget; navigation slice remains committed
+  implementation: committed (3bbdd19)
+  verification: RED missing module; GREEN focused 10/10; full Node 24 npm run verify 322/322, strict typecheck, 0 vulnerabilities, package validation, bounded runtime smoke
   blockers: []
   requirement_amendment: unassigned slots gray; green only for assigned acknowledged/read sessions; exact N assigned colors plus 5-N gray; immediate gray release on pane disappearance; initial all-gray state
-  next_action: Continue 3.1/3.2 remaining scope — adapter, recovery, privacy, timeout, duplicate, fail-open, persistence, installers; keep 3.1/3.2 unchecked until full scope done; do not mutate the native ledger
+  next_action: Continue 3.1/3.2 remaining scope — per-adapter observers (Codex/OpenCode/Claude), recovery/persistence, installers, and remaining safe commands; keep 3.1/3.2 unchecked until full scope done; do not mutate the native ledger
