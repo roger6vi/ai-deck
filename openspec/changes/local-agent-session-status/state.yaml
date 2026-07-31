@@ -25,10 +25,11 @@ task_progress:
     - "4.2"
     - "4.3"
 apply_progress:
-  current_slice: Session state store (pure serialize/parse + atomic save)
-  status: privacy-safe allowlist-validated serializer/parser plus a store that returns empty state on missing/corrupt/insecure files and writes 0o600 state.json via temp+rename under 0o700 runtime dir; reconciliation of stale panes deferred
-  implementation: committed (249bd7a)
-  verification: RED missing module; GREEN focused 17/17; full Node 24 npm run verify 339/339, strict typecheck, 0 vulnerabilities, package validation, bounded runtime smoke
-  blockers: []
+  current_slice: Session state reconciler (pure + tmux pane enumerator)
+  status: pure reconcileSessionState releases assigned slots whose panes are absent via PANE_MISSING; tmux pane enumerator returns undefined on failure so startup fails open; branch now stacks navigation + adapter transport + persistence + reconciler
+  implementation: committed (c5b683f)
+  verification: RED missing module; GREEN focused 10/10; full Node 24 npm run verify 349/349, strict typecheck, 0 vulnerabilities, package validation, bounded runtime smoke
+  blockers:
+    - Branch size 1,490 additions / 53 deletions vs main across 4 self-contained slices; exceeds the 400-line healthy chained-PR budget by ~4x. Recommended action is to split into chained PRs (nav → adapter → persistence → reconciler) or negotiate size:exception before opening a single PR.
   requirement_amendment: unassigned slots gray; green only for assigned acknowledged/read sessions; exact N assigned colors plus 5-N gray; immediate gray release on pane disappearance; initial all-gray state
-  next_action: Continue 3.1/3.2 remaining scope — per-adapter observers (Codex/OpenCode/Claude), pane reconciliation at startup, installers, and remaining safe commands; keep 3.1/3.2 unchecked until full scope done; do not mutate the native ledger
+  next_action: Decide delivery strategy (chained PRs vs size:exception) before opening PR; then continue 3.1/3.2 remaining scope — per-adapter observers, controller wiring for load/save/reconcile, installers, and remaining safe commands; keep 3.1/3.2 unchecked until full scope done; do not mutate the native ledger

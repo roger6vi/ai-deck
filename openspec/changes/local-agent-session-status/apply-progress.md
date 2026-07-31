@@ -52,16 +52,22 @@
 
 ## Partial Task 3: Integration A + B1 + B2 + C1 + C2a + C2b + Remediation
 
-- [ ] 3.1 remains open. Navigation, adapter transport (endpoint client), and pure-restore persistence are implemented; recovery reconciliation, per-adapter observers, and remaining integration scenarios are pending.
-- [ ] 3.2 remains open. Navigation, adapter transport, and pure-restore persistence are implemented; per-adapter observers, installers, and remaining safe commands are pending.
+- [ ] 3.1 remains open. Navigation, adapter transport (endpoint client), pure-restore persistence, and pane reconciliation are implemented; per-adapter observers and remaining integration scenarios are pending.
+- [ ] 3.2 remains open. Navigation, adapter transport, persistence, and reconciliation are implemented; per-adapter observers, installers, and remaining safe commands are pending.
 
 ## Persistence Slice (pure restore)
 
 - Added `src/persistence/session-state-store.ts`: `serializeSessionState` / `parseSessionState` pure helpers plus a `createSessionStateStore({ pluginRoot, fs, ownUid })` wrapper with `load()` and `save(state)`.
 - Envelope schema version 1 with fields `schemaVersion`, `slots`, `retiredSessions` only. Slot allowlist mirrors `SessionSlot` exactly; unknown/prohibited fields (`prompt`, `raw`, etc.) reject parse. All UUIDs enforce lowercase RFC 4122 v4, tmux identifiers enforce `%\\d+`/`$\\d+`/`@\\d+`, Ghostty bundle id is fixed, enums are exhaustive.
 - `load()` returns `createSessionState()` on missing file, corrupt contents, insecure ownership (`uid !== ownUid`), or group/world-readable mode. `save(state)` writes to a process-unique temp file with `0o600`, ensures the runtime directory exists with `0o700`, and atomically renames into place; on rename failure it unlinks the temp artifact and throws a fixed generic diagnostic.
-- Recovery reconciliation (re-validating tmux pane existence at startup) is intentionally deferred to a follow-up slice; the next authenticated event corrects any stale slot naturally.
+- Recovery reconciliation (re-validating tmux pane existence at startup) is now implemented in `src/persistence/session-state-reconciler.ts`; the next authenticated event still corrects any stale slot naturally when reconciliation is skipped.
 - New unit tests: `tests/persistence/session-state-store.test.ts` (17/17).
+
+## Reconciliation Slice
+
+- Added `src/persistence/session-state-reconciler.ts`: pure `reconcileSessionState(state, existingPaneIds)` that releases assigned slots whose tmux panes are absent (via the existing `PANE_MISSING` reducer action, preserving retirement/dedup semantics), plus `createTmuxPaneEnumerator({ process })` that shells `tmux list-panes -a -F '#{pane_id}'` through the bounded navigation process.
+- The enumerator filters control characters and non-`%\\d+` rows; on any tmux error it returns `undefined`, and the reconciler treats `undefined` as "fail open, keep loaded state." Reconciliation is deterministic and idempotent.
+- New unit tests: `tests/persistence/session-state-reconciler.test.ts` (10/10). The wiring into the plugin controller/runtime remains a follow-up slice.
 
 ## Adapter Transport Slice
 
@@ -112,6 +118,7 @@
 | Issue #33 navigation correction (unchecked) | `tests/navigation/ghostty-tmux.test.ts`, action/reducer tests | Unit + integration | 23/23 | Same-identity, hard-bound, parser RED | 24/24 + typecheck | Exact argv/window cases | Refactored; full verify 312/312 |
 | Adapter transport slice (unchecked) | `tests/adapters/endpoint-client.test.ts` | Unit (deterministic seams) | Node 24 baseline 312/312 | Missing module → suite fails | 10/10 focused | Endpoint discovery, uid/mode, record allowlist, HTTP status mapping, transport error, budget-timeout at read/stat/HTTP | Full verify 322/322 |
 | Persistence pure-restore slice (unchecked) | `tests/persistence/session-state-store.test.ts` | Unit (deterministic seams) | Node 24 baseline 322/322 | Missing module → suite fails | 17/17 focused | Envelope/slot/target/retired allowlist, UUID/tmux/enum guards, insecure ownership/mode, atomic temp+rename, temp cleanup on rename failure | Full verify 339/339 |
+| Reconciliation slice (unchecked) | `tests/persistence/session-state-reconciler.test.ts` | Unit (deterministic seams) | Node 24 baseline 339/339 | Missing module → suite fails | 10/10 focused | Undefined pane set = no-op, all-present = no-op, missing = release/retire, all-missing, unassigned ignored, retired preserved, enumerator parses/filters/errors | Full verify 349/349 |
 
 ## State
 
