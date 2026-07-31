@@ -52,8 +52,16 @@
 
 ## Partial Task 3: Integration A + B1 + B2 + C1 + C2a + C2b + Remediation
 
-- [ ] 3.1 remains open. Navigation and adapter transport (endpoint client) are implemented; recovery, per-adapter observers, and remaining integration scenarios are pending.
-- [ ] 3.2 remains open. Navigation and adapter transport are implemented; persistence, per-adapter observers, installers, and remaining safe commands are pending.
+- [ ] 3.1 remains open. Navigation, adapter transport (endpoint client), and pure-restore persistence are implemented; recovery reconciliation, per-adapter observers, and remaining integration scenarios are pending.
+- [ ] 3.2 remains open. Navigation, adapter transport, and pure-restore persistence are implemented; per-adapter observers, installers, and remaining safe commands are pending.
+
+## Persistence Slice (pure restore)
+
+- Added `src/persistence/session-state-store.ts`: `serializeSessionState` / `parseSessionState` pure helpers plus a `createSessionStateStore({ pluginRoot, fs, ownUid })` wrapper with `load()` and `save(state)`.
+- Envelope schema version 1 with fields `schemaVersion`, `slots`, `retiredSessions` only. Slot allowlist mirrors `SessionSlot` exactly; unknown/prohibited fields (`prompt`, `raw`, etc.) reject parse. All UUIDs enforce lowercase RFC 4122 v4, tmux identifiers enforce `%\\d+`/`$\\d+`/`@\\d+`, Ghostty bundle id is fixed, enums are exhaustive.
+- `load()` returns `createSessionState()` on missing file, corrupt contents, insecure ownership (`uid !== ownUid`), or group/world-readable mode. `save(state)` writes to a process-unique temp file with `0o600`, ensures the runtime directory exists with `0o700`, and atomically renames into place; on rename failure it unlinks the temp artifact and throws a fixed generic diagnostic.
+- Recovery reconciliation (re-validating tmux pane existence at startup) is intentionally deferred to a follow-up slice; the next authenticated event corrects any stale slot naturally.
+- New unit tests: `tests/persistence/session-state-store.test.ts` (17/17).
 
 ## Adapter Transport Slice
 
@@ -103,6 +111,7 @@
 | Current 3.1 packaging remediation (unchecked) | `tests/generated-gate.test.ts`, `tests/delivery.test.ts` | Filesystem/generated-output integration | Node 24 baseline 16/16 | Same filtered scanlines with a valid alternate deflate IDAT failed raw-byte comparison | Authoritative validator passed 18/18 | Re-encoded identical scanlines accepted; scanline drift rejected | Validator: envelope/CRC/IHDR/bounded complete inflate; delivery: dimensions/IHDR-derived data/scanlines |
 | Issue #33 navigation correction (unchecked) | `tests/navigation/ghostty-tmux.test.ts`, action/reducer tests | Unit + integration | 23/23 | Same-identity, hard-bound, parser RED | 24/24 + typecheck | Exact argv/window cases | Refactored; full verify 312/312 |
 | Adapter transport slice (unchecked) | `tests/adapters/endpoint-client.test.ts` | Unit (deterministic seams) | Node 24 baseline 312/312 | Missing module → suite fails | 10/10 focused | Endpoint discovery, uid/mode, record allowlist, HTTP status mapping, transport error, budget-timeout at read/stat/HTTP | Full verify 322/322 |
+| Persistence pure-restore slice (unchecked) | `tests/persistence/session-state-store.test.ts` | Unit (deterministic seams) | Node 24 baseline 322/322 | Missing module → suite fails | 17/17 focused | Envelope/slot/target/retired allowlist, UUID/tmux/enum guards, insecure ownership/mode, atomic temp+rename, temp cleanup on rename failure | Full verify 339/339 |
 
 ## State
 
