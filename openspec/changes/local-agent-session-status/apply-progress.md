@@ -1,5 +1,44 @@
 # Apply Progress: Local Agent Session Status
 
+## Historical Native Ordinal 9 Rendering Remediation (pre-gray amendment)
+
+- Historical physical evidence before the gray amendment: authenticated `started` returned HTTP 204, but slot 1 rendered black while then-idle slots 2–5 were green.
+- Historical semantic colors were `green|amber|red|blue`; immutable SVG paint mapping used `#008000`, `#FFBF00`, `#FF0000`, and `#0000FF`.
+- Renderer now emits documented `data:image/svg+xml;base64,...` SVG, never the unsupported percent-encoded form.
+- Strict fake-host coverage decodes all paints, rejects percent-encoded images, and proves idle green / started amber; existing physical acknowledgement and scheduler tests remain.
+- Historical ordinal 9 verification: Node 24.18.0 focused action/controller 19/19 + typecheck; exact `npm run verify` once, 299/299, audit clean, package validation, and runtime smoke.
+- Ready for a separately authorized live restart/event only; none occurred. Tasks remain 6/13 and all unchecked tasks stay unchecked.
+- Evidence revision: `sha256:f85bb5c8d2315a7871602a60b87f705747545b6f081e491442306762e2175923`.
+
+## Native Ordinal 11 Unassigned-Slot Visual Contract
+
+- Implemented the amended occupancy contract without changing assignments, scheduler behavior, retries, privacy boundaries, or physical-only acknowledgement semantics.
+- Added `SESSION_SLOT_COLOR.GRAY` with the explicit immutable base64-SVG paint `#6B7280`. Unassigned slots are gray at initial render and after pane disappearance; assigned idle/read remains green.
+- Action/controller integration proves all five slots initialize gray, three active sessions render three amber/two gray, physical acknowledgement changes an assigned blue slot to green without releasing it, and pane disappearance releases the assigned slot to gray.
+- Strict TDD evidence: Node 24 focused safety baseline 27/27; the new contract test failed RED (expected gray but received green); targeted GREEN passed 1/1 after the minimum color mapping/reducer change; triangulation/refactor passed focused 28/28 plus typecheck.
+- Exact Node 24.18.0 `npm run verify` ran once and passed 300/300 tests, strict typecheck, production audit (0 vulnerabilities), package validation, and bounded runtime smoke. No live Stream Deck/plugin/profile action occurred.
+- Tasks remain 6/13. Tasks 3.1 and 3.2 remain intentionally unchecked because navigation, persistence, adapters, installers, recovery, and remaining integration work are incomplete.
+
+## Current Status
+
+- **Implemented and verified**: gray is free/unassigned/disabled; green is assigned idle/read or physically acknowledged and never free; amber, red, and blue remain unchanged.
+- **Current verification**: Native ordinal 11 on Node 24.18.0 — exact `npm run verify` passed **300/300** tests, typecheck, production audit (0 vulnerabilities), package validation, and bounded runtime smoke.
+
+## Native Ordinal 12 Physical Acceptance
+
+- On `fcd24b1d7abb86aed33120df7d76af1b9695d5d5`, `npm run build` and `npm run restart:plugin` succeeded; a fresh live `127.0.0.1` endpoint validated with runtime `0700`, endpoint `0600`, and no secrets recorded.
+- Tracked sessions `1111…`, `2222…`, and `3333…` each returned `204` for `started` and exact matching `pane-disappeared`, leaving zero assignments.
+- User confirmed both three amber/two disabled gray and immediate release to all five physical slots gray.
+- Fresh `StreamDeck.log` restart window `2026-07-31T10:26:13.740+02:00`–`10:26:13.920+02:00` had owner PID 149 live at evidence time and zero fixed startup/render/server error matches; no profile, relink, source, Git, or GitHub mutation occurred. Physical acceptance passed; tasks remain 6/13 and 3.1/3.2 remain unchecked.
+
+## Native Ordinal 13 Generated Asset Determinism Remediation (Issue #32)
+
+- Root cause: the gate compared PNG bytes, including `deflateSync`'s platform/zlib-dependent IDAT encoding, rather than the generated image contract; equivalent filtered scanline bytes could fail despite matching dimensions and valid checksums.
+- Authoritative `check-generated` validates signature, exact IHDR/IDAT/IEND envelope, CRCs, IHDR, bounded complete inflation, and filtered scanline bytes; delivery only compares dimensions/IHDR-derived data and filtered scanline bytes, while profile remains byte-exact.
+- Strict TDD: the same-filtered-scanlines/different-deflate test failed RED under explicit Node 24.18.0 and passed GREEN **13/13**; ordinal-13 retry adds bounded decompression plus complete-IDAT-consumption rejection while preserving filtered-scanline-drift rejection.
+- Node 24.18.0 focused generated/delivery checks passed 19/19; typecheck passed; exact retry `npm run verify` passed 303/303, audit 0 vulnerabilities, packaging, and local runtime smoke. Verification left tracked assets/profile unchanged.
+- No live Stream Deck, plugin, profile, native ledger, or GitHub action occurred. Tasks remain 6/13; 3.1/3.2 remain unchecked.
+
 ## Completed Tasks
 
 - [x] 1.1 PR 1A: Node 24 package, strict TypeScript/Rollup/Vitest scaffold, CI, minimal plugin/action compilation, and focused tooling tests.
@@ -49,11 +88,16 @@
 | 2.1–2.3 | `tests/core/reducer.test.ts` | Unit | 8/8 | Acceptance tests first | Passed | Lifecycle/timing/capacity | Ordering |
 | 3.1/3.2 C1 | `tests/ipc/local-event-server.test.ts` | Real loopback | 10/10 | Protocol/timeout/capacity failures | Passed | Auth/address/raw headers/sockets/callback limits | Bounded terminal guard/payload helpers |
 | 3.1/3.2 C2a remediation | `tests/ipc/endpoint-discovery.test.ts` | Filesystem integration | 9/9 | No-op cleanup removal/atomic barrier coverage | Focused Node24 pass | Exact rename-barrier records, root/runtime symlinks, unsafe mode/owner seam, invalid boundaries, publication failures | Readable trusted-root contract |
-| 3.1/3.2 C2b remediation | `tests/plugin/runtime.test.ts`, `tests/scaffold.test.ts`, `tests/packaging.test.ts`, `tests/ipc/local-event-server.test.ts` | Loopback/plugin integration | 12/12 packaging baseline | Spawn error and startup-budget accounting were absent | 13/13 focused Node24 repeated 3x + typecheck; exact full Node24 `npm run verify` 298/298 | ENOENT child error cleanup, delayed READY, bounded no-READY | Once-only child settlement and phase-total deadline |
+| Historical 3.1/3.2 C2b remediation | `tests/plugin/runtime.test.ts`, `tests/scaffold.test.ts`, `tests/packaging.test.ts`, `tests/ipc/local-event-server.test.ts` | Loopback/plugin integration | 12/12 packaging baseline | Spawn error and startup-budget accounting were absent | Historical full Node24 `npm run verify` 298/298 | ENOENT child error cleanup, delayed READY, bounded no-READY | Once-only child settlement and phase-total deadline |
+| Historical 3.1 rendering remediation (unchecked) | `tests/actions/session-slot.integration.test.ts`, `tests/plugin/session-slot-controller.scheduler.test.ts` | Action/controller integration | 18/18 before edits | Base64 paint/host-contract tests failed on percent-encoded named colors | Historical full Node24 verify 299/299 | Four semantic paints; idle/started; fake host rejects percent encoding | Immutable paint map and semantic scheduler assertions |
+| Current 3.1 unassigned-slot visual contract (unchecked) | `tests/actions/session-slot.integration.test.ts`, `tests/core/reducer.test.ts` | Action/controller integration + unit | Node 24 focused 27/27 | New five-slot gray test failed: expected gray / received green | Targeted 1/1 passed after minimum mapping/reducer change | Focused 28/28 + typecheck: all-gray, three assigned/two gray, acknowledged green, pane-release gray, SVG paint | Current full Node24 verify 300/300 |
+| Current 3.1 packaging remediation (unchecked) | `tests/generated-gate.test.ts`, `tests/delivery.test.ts` | Filesystem/generated-output integration | Node 24 baseline 16/16 | Same filtered scanlines with a valid alternate deflate IDAT failed raw-byte comparison | Authoritative validator passed 18/18 | Re-encoded identical scanlines accepted; scanline drift rejected | Validator: envelope/CRC/IHDR/bounded complete inflate; delivery: dimensions/IHDR-derived data/scanlines |
 
 ## State
 
 - Six of thirteen tasks are complete; tasks 3.1–4.3 remain unchecked.
 - Preserve the task checkbox state until the deferred integration work is actually complete.
+- **Historical pre-ordinal-11 amendment statement**: The clarified occupancy contract was pending implementation before ordinal 11; it is superseded by the implemented and verified current status above.
+- **Applied requirement amendment**: The clarified occupancy contract now renders semantic gray `#6B7280` for all unassigned slots, including startup/restart and immediate pane release; green remains assigned/read only. Tasks remain intentionally unchecked.
 - **Review Workload Forecast: Approved.** Maintainer `roger6vi` approved one remaining `single-pr-default` with `size:exception` capped at 1,600 changed lines. Actual final Git count: 1,580 changed lines (1,527 additions, 53 deletions), including 1,067 code/tests and 513 OpenSpec lines.
-- Exact Node 24.18.0 `npm run verify` passed 298/298 tests, typecheck, production audit (0 vulnerabilities), package validation, and runtime smoke.
+- Historical pre-ordinal-11 Node 24.18.0 verification passed 298/298 tests, typecheck, production audit (0 vulnerabilities), package validation, and runtime smoke.

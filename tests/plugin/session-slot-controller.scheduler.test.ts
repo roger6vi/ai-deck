@@ -8,6 +8,7 @@ import {
   SESSION_SLOT_RENDER_ERROR,
   SESSION_SLOT_RENDER_RETRY_DELAY_MS,
   SessionSlotController,
+  sessionSlotSvgDataUri,
   type SessionSlotControllerOptions,
 } from "../../src/plugin/session-slot-controller";
 
@@ -140,7 +141,7 @@ describe("session slot production render scheduling", () => {
     testFixture.runDue();
     await settle();
 
-    expect(lastImage(action)).toContain(SESSION_SLOT_COLOR.AMBER);
+    expect(lastImage(action)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.AMBER));
     expect(testFixture.activeTimerCount()).toBe(1);
     expect(testFixture.timers.at(-1)?.deadline).toBe(1 + SESSION_COLOR_LIMITS.RUNNING_ADVISORY_MS);
   });
@@ -263,12 +264,12 @@ describe("session slot production render scheduling", () => {
     testFixture.setNow(1 + SESSION_COLOR_LIMITS.RUNNING_ADVISORY_MS - 1);
     testFixture.runDue();
     await settle();
-    expect(lastImage(action)).toContain(SESSION_SLOT_COLOR.AMBER);
+    expect(lastImage(action)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.AMBER));
 
     testFixture.setNow(1 + SESSION_COLOR_LIMITS.RUNNING_ADVISORY_MS);
     testFixture.runDue();
     await settle();
-    expect(lastImage(action)).toContain(SESSION_SLOT_COLOR.RED);
+    expect(lastImage(action)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.RED));
     expect(testFixture.activeTimerCount()).toBe(0);
 
     const lateFixture = fixture();
@@ -279,7 +280,7 @@ describe("session slot production render scheduling", () => {
     await lateSubject.handleStatusEvent(status(), lateFixture.clock.now());
     lateFixture.runDue();
     await settle();
-    expect(lastImage(lateAction)).toContain(SESSION_SLOT_COLOR.RED);
+    expect(lastImage(lateAction)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.RED));
     expect(lateFixture.activeTimerCount()).toBe(0);
   });
 
@@ -308,11 +309,11 @@ describe("session slot production render scheduling", () => {
     testFixture.setNow(1 + SESSION_COLOR_LIMITS.RUNNING_ADVISORY_MS - 1);
     testFixture.runDue();
     await settle();
-    expect(lastImage(first)).toContain(SESSION_SLOT_COLOR.AMBER);
+    expect(lastImage(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.AMBER));
     testFixture.setNow(1 + SESSION_COLOR_LIMITS.RUNNING_ADVISORY_MS);
     testFixture.runDue();
     await settle();
-    expect(lastImage(first)).toContain(SESSION_SLOT_COLOR.RED);
+    expect(lastImage(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.RED));
     const afterBoundary = 1 + SESSION_COLOR_LIMITS.RUNNING_ADVISORY_MS;
     testFixture.setNow(afterBoundary);
     await subject.handleStatusEvent(status(SESSION_STATUS.COMPLETED, afterBoundary), afterBoundary);
@@ -375,7 +376,7 @@ describe("session slot production render scheduling", () => {
     expect(testFixture.activeTimerCount()).toBe(1);
     testFixture.runDue();
     await settle();
-    expect(lastImage(action)).toContain(SESSION_SLOT_COLOR.RED);
+    expect(lastImage(action)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.RED));
     expect(testFixture.activeTimerCount()).toBe(0);
   });
 

@@ -54,7 +54,7 @@ function inspectPng(png: Buffer) {
     offset = dataStart + length + PNG_CHUNK_CRC_WIDTH;
   }
 
-  return { headerLength, width, height, pixels: inflateSync(Buffer.concat(imageData)) };
+  return { headerLength, width, height, scanlines: inflateSync(Buffer.concat(imageData)) };
 }
 
 async function listHashes(directory: string) {
@@ -62,7 +62,14 @@ async function listHashes(directory: string) {
   const hashes = await Promise.all(
     files.map(async (file) => {
       const contents = await readFile(resolve(directory, file));
-      return [file, createHash("sha256").update(contents).digest("hex")] as const;
+      const { headerLength, width, height, scanlines } = inspectPng(contents);
+      return [
+        file,
+        createHash("sha256")
+          .update(`${headerLength}:${width}:${height}:`)
+          .update(scanlines)
+          .digest("hex"),
+      ] as const;
     }),
   );
   return new Map(hashes);
@@ -125,7 +132,7 @@ describe("plugin delivery contract", () => {
 
   it("renders action and category icons as white foreground over transparent background", async () => {
     for (const file of MONOCHROME_ASSETS) {
-      const { width, pixels } = inspectPng(await readFile(resolve(ASSETS_DIRECTORY, file)));
+      const { width, scanlines: pixels } = inspectPng(await readFile(resolve(ASSETS_DIRECTORY, file)));
       const stride = width * RGBA_BYTES_PER_PIXEL + PNG_FILTER_BYTES_PER_ROW;
       let transparentPixelCount = 0;
       let opaquePixelCount = 0;
@@ -149,7 +156,7 @@ describe("plugin delivery contract", () => {
     }
   });
 
-  it("generates byte-identical assets in isolated directories", async () => {
+  it("matches dimensions, IHDR-derived data, and filtered scanlines in isolated directories", async () => {
     const firstDirectory = await mkdtemp(resolve(tmpdir(), "ai-deck-assets-"));
     const secondDirectory = await mkdtemp(resolve(tmpdir(), "ai-deck-assets-"));
     temporaryDirectories.push(firstDirectory, secondDirectory);

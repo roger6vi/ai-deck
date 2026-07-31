@@ -1,6 +1,7 @@
 import { access, cp, mkdir, mkdtemp, readFile, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { deflateSync, inflateSync } from "node:zlib";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -17,6 +18,8 @@ const ROOT = resolve(import.meta.dirname, "..");
 const ASSETS = "com.gentleman.ai-deck.sdPlugin/assets";
 const PROFILE = join(ROOT, PROFILE_FILE);
 const temporaryDirectories: string[] = [];
+const PNG_CRC32_INITIAL_VALUE = 0xffffffff;
+const PNG_CRC32_POLYNOMIAL = 0xedb88320;
 
 interface PackageJson {
   engines: { node: string };
@@ -29,6 +32,35 @@ async function copyGeneratedOutputs(): Promise<string> {
   await cp(join(ROOT, ASSETS), join(root, ASSETS), { recursive: true });
   await cp(PROFILE, join(root, PROFILE_FILE));
   return root;
+}
+
+function crc32(data: Buffer): number {
+  let value = PNG_CRC32_INITIAL_VALUE;
+  for (const byte of data) {
+    value ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) value = (value >>> 1) ^ (value & 1 ? PNG_CRC32_POLYNOMIAL : 0);
+  }
+  return (value ^ PNG_CRC32_INITIAL_VALUE) >>> 0;
+}
+
+async function reencodeIdat(
+  file: string,
+  transformScanlines: (scanlines: Buffer) => Buffer = (scanlines) => scanlines,
+  compressedSuffix: Buffer = Buffer.alloc(0),
+): Promise<void> {
+  const png = await readFile(file);
+  const idatTypeOffset = png.indexOf(Buffer.from("IDAT"));
+  const idatLengthOffset = idatTypeOffset - 4;
+  const idatLength = png.readUInt32BE(idatLengthOffset);
+  const idatDataOffset = idatTypeOffset + 4;
+  const idatData = png.subarray(idatDataOffset, idatDataOffset + idatLength);
+  const reencodedData = Buffer.concat([deflateSync(transformScanlines(inflateSync(idatData)), { level: 0 }), compressedSuffix]);
+  const chunk = Buffer.alloc(reencodedData.length + 12);
+  chunk.writeUInt32BE(reencodedData.length);
+  chunk.write("IDAT", 4);
+  reencodedData.copy(chunk, 8);
+  chunk.writeUInt32BE(crc32(chunk.subarray(4, -4)), chunk.length - 4);
+  await writeFile(file, Buffer.concat([png.subarray(0, idatLengthOffset), chunk, png.subarray(idatDataOffset + idatLength + 4)]));
 }
 
 afterEach(() =>
@@ -91,6 +123,39 @@ describe("generated-output gate", () => {
     const drifted = await copyGeneratedOutputs();
     const file = join(drifted, `${ASSETS}/plugin.png`);
     await writeFile(file, Buffer.concat([await readFile(file), Buffer.from([0])]));
+    await expect(assertGeneratedArtifacts(drifted)).rejects.toThrow(
+      "does not match deterministic generation",
+    );
+  });
+
+  it("accepts equivalent filtered scanline bytes regardless of deflate encoding", async () => {
+    const equivalent = await copyGeneratedOutputs();
+    await reencodeIdat(join(equivalent, ASSETS, "category-icon@2x.png"));
+
+    await expect(assertGeneratedArtifacts(equivalent)).resolves.toBeUndefined();
+  });
+
+  it("rejects trailing compressed data and scanlines beyond the IHDR bound", async () => {
+    for (const [suffix, transform] of [
+      [Buffer.from([0]), (scanlines: Buffer) => scanlines],
+      [Buffer.alloc(0), (scanlines: Buffer) => Buffer.concat([scanlines, Buffer.from([0])])],
+    ] as const) {
+      const invalid = await copyGeneratedOutputs();
+      await reencodeIdat(join(invalid, ASSETS, "category-icon@2x.png"), transform, suffix);
+      await expect(assertGeneratedArtifacts(invalid)).rejects.toThrow("does not match deterministic generation");
+    }
+  });
+
+  it("rejects re-encoded PNGs when filtered scanline bytes drift", async () => {
+    const drifted = await copyGeneratedOutputs();
+    await reencodeIdat(join(drifted, ASSETS, "category-icon@2x.png"), (scanlines) => {
+      const changedScanlines = Buffer.from(scanlines);
+      const firstScanlineByte = changedScanlines[1];
+      if (firstScanlineByte === undefined) throw new Error("PNG scanlines must be non-empty.");
+      changedScanlines[1] = firstScanlineByte ^ 1;
+      return changedScanlines;
+    });
+
     await expect(assertGeneratedArtifacts(drifted)).rejects.toThrow(
       "does not match deterministic generation",
     );

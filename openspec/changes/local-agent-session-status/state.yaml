@@ -25,9 +25,10 @@ task_progress:
     - "4.2"
     - "4.3"
 apply_progress:
-  current_slice: C2 pre-PR remediation
-  status: C2a+C2b remediation verified; one remaining PR approved under 1,600-line size exception; remaining integration pending
+  current_slice: Native ordinal 15 scanline-contract terminology cleanup for issue #32
+  status: Replaced platform-sensitive PNG byte comparison with authoritative validated IHDR plus inflated filtered-scanline-byte comparison; gray-slot runtime behavior and hardware evidence are unchanged
   implementation: uncommitted
-  verification: Node24 focused packaging 13/13 repeated 3x + typecheck passed; exact npm run verify passed 298/298 spawn/smoke deadline
+  verification: Explicit Node 24.18.0 initial RED then GREEN 13/13; ordinal-13 retry rejects trailing IDAT bytes and bounds scanlines; focused checks passed 19/19, typecheck and exact npm run verify passed 303/303, audit 0 vulnerabilities, package validation, and local runtime smoke; tracked assets/profile remained unchanged
   blockers: []
-  next_action: prepare one remaining single-pr-default under roger6vi-approved 1,600-line size exception; preserve task checkbox state
+  requirement_amendment: unassigned slots gray; green only for assigned acknowledged/read sessions; exact N assigned colors plus 5-N gray; immediate gray release on pane disappearance; initial all-gray state
+  next_action: Fresh Node 24 cross-platform CI/gate on PR #30, then merge under parent authorization; preserve 6/13 task checkbox state and do not mutate the native ledger
