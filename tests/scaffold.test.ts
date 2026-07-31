@@ -33,6 +33,7 @@ vi.mock("../src/actions/session-slot", () => ({
 vi.mock("../src/plugin/runtime", () => ({
   registerPluginRuntimeProcessLifecycle: runtimeMock.registerLifecycle,
   startPluginRuntime: runtimeMock.start,
+  derivePluginRootFromBundledModuleUrl: () => "/mock/plugin/root",
 }));
 
 interface PackageManifest {
