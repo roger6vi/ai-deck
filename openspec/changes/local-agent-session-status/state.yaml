@@ -25,13 +25,15 @@ task_progress:
     - "4.2"
     - "4.3"
 apply_progress:
-  current_slice: Runtime hydration + production wiring + README
-  status: SessionSlotController exposes hydrateState/subscribeToStateChanges; PluginRuntime wires optional persistence (load, optional reconcile, hydrate before publish, subscribe save-on-change); src/plugin.ts builds the production persistence from the file store + tmux enumerator + reconciler; README documents install/uninstall/rollback/troubleshooting/privacy with a regression guard
-  implementation: committed (1668590 on branch feat/session-runtime-wiring-and-observers; stacked on PR #34)
-  verification: RED missing module/exports; GREEN 7/7 + 5/5 + 6/6 focused; full Node 24 npm run verify 367/367, strict typecheck, 0 vulnerabilities, package validation, bounded runtime smoke
+  current_slice: Adapter emit CLI helper (transport for shell-wrapper integrations)
+  status: parseAdapterEmitArgs and runAdapterEmit validate every candidate event through the plugin's own allowlist parser, map endpoint-client outcomes to distinct exit codes, and never leak raw errors to stderr; the shell-wrapper mechanism was chosen as the default per-tool observation strategy
+  implementation: committed (5645198 on branch feat/session-runtime-wiring-and-observers; stacked on PR #34)
+  verification: RED missing module; GREEN focused 12/12; full Node 24 npm run verify 380/380, strict typecheck, 0 vulnerabilities, package validation, bounded runtime smoke
   blockers:
     - PR #34 (nav + adapter + persistence + reconciler) awaits size:exception review; this branch stacks on top and must land after PR #34 or rebase.
-    - Per-adapter observers (Codex/OpenCode/Claude) still pending; they require a decision on observation mechanism per tool (file watch vs shell wrapper vs stdout tail).
+    - PR #35 branch delta 971 additions / 10 deletions; still under the 1,600 exception cap.
+    - Per-tool wrapper installers (Codex, OpenCode, Claude shell hook scripts) still pending; the shared adapter-emit CLI is the transport, but tool-specific hook install still needs decisions on shell (zsh/bash/fish), install path, and preexec/postexec mechanism.
+    - Standalone CLI bundling for PATH install is a documented follow-up (would need a second rollup entry and updates to `scripts/check-package.mjs` allowlist).
     - Task 4.2 (hardware test with two OpenCode sessions) and 4.3 (install on work Mac with Claude enabled + rollback evidence) require physical Stream Deck access and are outside autonomous scope.
   requirement_amendment: unassigned slots gray; green only for assigned acknowledged/read sessions; exact N assigned colors plus 5-N gray; immediate gray release on pane disappearance; initial all-gray state
-  next_action: Open follow-up PR for this branch; then design per-adapter observers with the user; then execute 4.2/4.3 physical acceptance
+  next_action: Rebase branch on merged PR #34; design per-tool wrapper installers with the user (shell, install path, preexec/postexec); execute 4.2/4.3 physical acceptance

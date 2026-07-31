@@ -52,8 +52,8 @@
 
 ## Partial Task 3: Integration A + B1 + B2 + C1 + C2a + C2b + Remediation
 
-- [ ] 3.1 remains open. Navigation, adapter transport (endpoint client), pure-restore persistence, pane reconciliation, and controller hydration/subscription wiring are implemented; per-adapter observers remain pending.
-- [ ] 3.2 remains open. Navigation, adapter transport, persistence, reconciliation, production wiring in `src/plugin.ts`, and README setup/rollback documentation are implemented; per-adapter observers, installers, and remaining safe commands are pending.
+- [ ] 3.1 remains open. Navigation, adapter transport (endpoint client), pure-restore persistence, pane reconciliation, controller hydration/subscription wiring, and the shared adapter-emit CLI helper are implemented; per-tool wrapper installers remain pending.
+- [ ] 3.2 remains open. Navigation, adapter transport, persistence, reconciliation, production wiring in `src/plugin.ts`, README setup/rollback documentation, and the adapter-emit helper are implemented; per-tool wrapper installers and bundled distribution of the CLI remain pending.
 
 ## Persistence Slice (pure restore)
 
@@ -62,6 +62,14 @@
 - `load()` returns `createSessionState()` on missing file, corrupt contents, insecure ownership (`uid !== ownUid`), or group/world-readable mode. `save(state)` writes to a process-unique temp file with `0o600`, ensures the runtime directory exists with `0o700`, and atomically renames into place; on rename failure it unlinks the temp artifact and throws a fixed generic diagnostic.
 - Recovery reconciliation (re-validating tmux pane existence at startup) is now implemented in `src/persistence/session-state-reconciler.ts`; the next authenticated event still corrects any stale slot naturally when reconciliation is skipped.
 - New unit tests: `tests/persistence/session-state-store.test.ts` (17/17).
+
+## Adapter CLI Emit Slice
+
+- Added `src/cli/adapter-emit.ts` with `parseAdapterEmitArgs` and `runAdapterEmit`. The helper accepts a strict flag allowlist (`--source`, `--session-id`, `--event-id`, `--lifecycle`, `--pane-id`, `--session`, `--window`, `--sequence`) and rejects any unknown flag or prohibited content field (`--prompt`, `--transcript`, `--secret`, `--command`, `--file-path`).
+- Every candidate event is re-validated through `parseLocalAgentStatusEvent` before send, so an ill-formed source/lifecycle/UUID/tmux identifier short-circuits with exit code 2 and zero network activity.
+- Exit codes map from the endpoint client outcome: 0 emitted, 2 rejected, 3 unavailable, 4 timed-out, 5 local error. Stderr never contains raw errors or stack traces.
+- README documents the tsx invocation and exit code table; regression-guarded by `tests/readme.test.ts`. Standalone binary bundling is a documented follow-up.
+- New tests: `tests/cli/adapter-emit.test.ts` (12/12). Full Node 24 verify: 380/380.
 
 ## Runtime Wiring and Documentation Slices
 
@@ -129,6 +137,7 @@
 | Reconciliation slice (unchecked) | `tests/persistence/session-state-reconciler.test.ts` | Unit (deterministic seams) | Node 24 baseline 339/339 | Missing module → suite fails | 10/10 focused | Undefined pane set = no-op, all-present = no-op, missing = release/retire, all-missing, unassigned ignored, retired preserved, enumerator parses/filters/errors | Full verify 349/349 |
 | Runtime hydration + subscription (unchecked) | `tests/plugin/session-hydration.test.ts`, `tests/plugin/runtime-hydration.test.ts` | Unit + runtime | Node 24 baseline 349/349 | Missing hydrateState/subscribeToStateChanges → 7 tests fail; runtime hydration mocks → 4 tests fail | 7/7 controller + 5/5 runtime | Hydration order before publish, reconcile-through-load, subscriber dedupe/unsubscribe/rejection containment, hydration failure fallback | Full verify 361/361 |
 | Production wiring + README (unchecked) | `tests/scaffold.test.ts`, `tests/readme.test.ts` | Integration + docs | Node 24 baseline 361/361 | scaffold mock missing `derivePluginRootFromBundledModuleUrl`; missing README | Scaffold restored 5/5, README 6/6 | `src/plugin.ts` builds persistence when `process.getuid` is available, docs guard install/uninstall/rollback/privacy | Full verify 367/367 |
+| Adapter emit CLI (unchecked) | `tests/cli/adapter-emit.test.ts`, `tests/readme.test.ts` | Unit + docs guard | Node 24 baseline 367/367 | Missing module → suite fails | 12/12 CLI + 7/7 README | Flag allowlist, prohibited-field rejection, event re-validation, exit code mapping, no stderr leak, README documents tsx form and exit codes | Full verify 380/380 |
 
 ## State
 
