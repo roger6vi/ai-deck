@@ -1,5 +1,7 @@
 # Apply Progress: Local Agent Session Status
 
+## Approved Issue #33: Navigation correction — strict TDD RED same-value restart/resistant child; GREEN/refactor focused Node 24 24/24 + typecheck; argv-only hard-bounded TERM/KILL boundary, strict tmux parsing/has-session, immutable assignment ID, and exact ordered commands. Exact Node 24 verify passed 312/312; tasks remain 6/13 with 3.1/3.2 unchecked.
+
 ## Historical Native Ordinal 9 Rendering Remediation (pre-gray amendment)
 
 - Historical physical evidence before the gray amendment: authenticated `started` returned HTTP 204, but slot 1 rendered black while then-idle slots 2–5 were green.
@@ -22,7 +24,7 @@
 ## Current Status
 
 - **Implemented and verified**: gray is free/unassigned/disabled; green is assigned idle/read or physically acknowledged and never free; amber, red, and blue remain unchanged.
-- **Current verification**: Native ordinal 11 on Node 24.18.0 — exact `npm run verify` passed **300/300** tests, typecheck, production audit (0 vulnerabilities), package validation, and bounded runtime smoke.
+- **Current verification**: Issue #33 navigation correction on Node 24.18.0 — focused 24/24 + typecheck and exact `npm run verify` **312/312**; no live navigation.
 
 ## Native Ordinal 12 Physical Acceptance
 
@@ -50,8 +52,8 @@
 
 ## Partial Task 3: Integration A + B1 + B2 + C1 + C2a + C2b + Remediation
 
-- [ ] 3.1 remains open. C1 real-loopback and C2a/C2b bootstrap plus pre-PR remediation are verified; navigation, adapter, recovery, and remaining integration scenarios are pending.
-- [ ] 3.2 remains open. C1/C2a/C2b localhost bearer bootstrap and safe packaging/lifecycle remediation are complete; persistence, navigation, adapters, and installers are pending.
+- [ ] 3.1 remains open. Navigation is implemented; adapter, recovery, and remaining integration scenarios are pending.
+- [ ] 3.2 remains open. Navigation is implemented; persistence, adapters, installers, and remaining safe commands are pending.
 
 ## C2a Publication Gate
 
@@ -92,6 +94,7 @@
 | Historical 3.1 rendering remediation (unchecked) | `tests/actions/session-slot.integration.test.ts`, `tests/plugin/session-slot-controller.scheduler.test.ts` | Action/controller integration | 18/18 before edits | Base64 paint/host-contract tests failed on percent-encoded named colors | Historical full Node24 verify 299/299 | Four semantic paints; idle/started; fake host rejects percent encoding | Immutable paint map and semantic scheduler assertions |
 | Current 3.1 unassigned-slot visual contract (unchecked) | `tests/actions/session-slot.integration.test.ts`, `tests/core/reducer.test.ts` | Action/controller integration + unit | Node 24 focused 27/27 | New five-slot gray test failed: expected gray / received green | Targeted 1/1 passed after minimum mapping/reducer change | Focused 28/28 + typecheck: all-gray, three assigned/two gray, acknowledged green, pane-release gray, SVG paint | Current full Node24 verify 300/300 |
 | Current 3.1 packaging remediation (unchecked) | `tests/generated-gate.test.ts`, `tests/delivery.test.ts` | Filesystem/generated-output integration | Node 24 baseline 16/16 | Same filtered scanlines with a valid alternate deflate IDAT failed raw-byte comparison | Authoritative validator passed 18/18 | Re-encoded identical scanlines accepted; scanline drift rejected | Validator: envelope/CRC/IHDR/bounded complete inflate; delivery: dimensions/IHDR-derived data/scanlines |
+| Issue #33 navigation correction (unchecked) | `tests/navigation/ghostty-tmux.test.ts`, action/reducer tests | Unit + integration | 23/23 | Same-identity, hard-bound, parser RED | 24/24 + typecheck | Exact argv/window cases | Refactored; full verify 312/312 |
 
 ## State
 
