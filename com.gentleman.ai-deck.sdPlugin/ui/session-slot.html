@@ -6,18 +6,28 @@
 <style>
   :root { color-scheme: dark; }
   body { font-family: system-ui, sans-serif; margin: 8px; color: #e5e7eb; font-size: 12px; }
-  label { display: block; margin-bottom: 4px; font-weight: 600; }
-  select { width: 100%; padding: 4px; background: #1f2937; color: #e5e7eb; border: 1px solid #374151; border-radius: 4px; }
+  h1 { font-size: 12px; font-weight: 600; margin: 0 0 6px; }
+  #sessions { display: flex; flex-direction: column; gap: 2px; }
+  .row {
+    display: flex; justify-content: space-between; gap: 8px; width: 100%;
+    padding: 6px 8px; font: inherit; text-align: left; cursor: pointer;
+    background: #1f2937; color: #e5e7eb; border: 1px solid #374151; border-radius: 4px;
+  }
+  .row:hover { background: #374151; }
+  .row[aria-selected="true"] { background: #2563eb; border-color: #3b82f6; }
+  .row .where { color: #9ca3af; white-space: nowrap; }
+  .row[aria-selected="true"] .where { color: #dbeafe; }
+  .empty { padding: 6px 8px; color: #9ca3af; }
   .hint { margin-top: 6px; color: #9ca3af; }
 </style>
 </head>
 <body>
-<label for="session">Assigned session</label>
-<select id="session" disabled><option>No active sessions</option></select>
+<h1 id="sessions-label">Assigned session</h1>
+<div id="sessions" role="listbox" aria-labelledby="sessions-label"></div>
 <div class="hint">Choosing a session moves it to this key; the occupant takes its place. "None" frees the key and keeps the session selectable.</div>
 <script>
 "use strict";
-const select = document.getElementById("session");
+const list = document.getElementById("sessions");
 let socket;
 let sessions = [];
 let actionInfo;
@@ -32,31 +42,50 @@ function currentSlotIndex() {
   }
 }
 
+function send(payload) {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  socket.send(JSON.stringify({ event: "sendToPlugin", context: inspectorUUID, payload }));
+}
+
+/**
+ * A native dropdown popup is unreliable inside the Property Inspector webview
+ * — it renders invisibly against the dark panel — so every choice is an
+ * always-visible row instead.
+ */
+function addRow(label, where, selected, onPick) {
+  const row = document.createElement("button");
+  row.type = "button";
+  row.className = "row";
+  row.setAttribute("role", "option");
+  row.setAttribute("aria-selected", selected ? "true" : "false");
+  const name = document.createElement("span");
+  name.textContent = label;
+  const hint = document.createElement("span");
+  hint.className = "where";
+  hint.textContent = where;
+  row.append(name, hint);
+  row.addEventListener("click", onPick);
+  list.append(row);
+}
+
 function render() {
   const slot = currentSlotIndex();
-  select.innerHTML = "";
+  list.innerHTML = "";
   if (sessions.length === 0) {
-    const empty = document.createElement("option");
+    const empty = document.createElement("div");
+    empty.className = "empty";
     empty.textContent = "No active sessions";
-    select.append(empty);
-    select.disabled = true;
+    list.append(empty);
     return;
   }
-  select.disabled = false;
-  const none = document.createElement("option");
-  none.value = "";
-  none.textContent = "None";
-  none.selected = !sessions.some((session) => session.slotIndex === slot);
-  select.append(none);
+  const assigned = sessions.some((session) => session.slotIndex === slot);
+  addRow("None", "free this key", !assigned, () => send({ type: "clear-slot" }));
   for (const session of sessions) {
-    const option = document.createElement("option");
-    option.value = session.sessionId;
     const where = session.slotIndex === undefined
       ? "unassigned"
       : session.slotIndex === slot ? "this key" : "key " + (session.slotIndex + 1);
-    option.textContent = session.title + " · " + session.source + " · " + session.lifecycle + " · " + where;
-    if (session.slotIndex === slot) option.selected = true;
-    select.append(option);
+    const label = session.title + " · " + session.source + " · " + session.lifecycle;
+    addRow(label, where, session.slotIndex === slot, () => send({ type: "set-slot-session", sessionId: session.sessionId }));
   }
 }
 
@@ -67,12 +96,8 @@ window.connectElgatoStreamDeckSocket = function (port, propertyInspectorUUID, re
   socket.onopen = () => {
     socket.send(JSON.stringify({ event: registerEvent, uuid: propertyInspectorUUID }));
     // The plugin pushes the list when the inspector appears, which can happen
-    // before this socket exists. Asking makes the dropdown independent of that.
-    socket.send(JSON.stringify({
-      event: "sendToPlugin",
-      context: propertyInspectorUUID,
-      payload: { type: "request-sessions" },
-    }));
+    // before this socket exists. Asking makes the list independent of that.
+    send({ type: "request-sessions" });
   };
   socket.onmessage = (message) => {
     let data;
@@ -83,17 +108,6 @@ window.connectElgatoStreamDeckSocket = function (port, propertyInspectorUUID, re
     }
   };
 };
-
-select.addEventListener("change", () => {
-  if (!socket || socket.readyState !== WebSocket.OPEN) return;
-  socket.send(JSON.stringify({
-    event: "sendToPlugin",
-    context: inspectorUUID,
-    payload: select.value === ""
-      ? { type: "clear-slot" }
-      : { type: "set-slot-session", sessionId: select.value },
-  }));
-});
 </script>
 </body>
 </html>
