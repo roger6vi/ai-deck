@@ -33,6 +33,17 @@
           }
         ]
       }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/claude-hook.mjs\" || true",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }

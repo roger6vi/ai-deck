@@ -14,6 +14,11 @@ describe("parseClaudeHookPayload", () => {
     expect(payload).toEqual({ hookEventName: "Stop", sessionId: "ses_1" });
   });
 
+  it("keeps the notification message, which is the only way to tell a permission prompt from idling", () => {
+    expect(parseClaudeHookPayload(JSON.stringify({ hook_event_name: "Notification", session_id: "ses_1", message: "Claude needs your permission to use Bash" })))
+      .toEqual({ hookEventName: "Notification", sessionId: "ses_1", message: "Claude needs your permission to use Bash" });
+  });
+
   it("rejects payloads that are not JSON objects", () => {
     expect(parseClaudeHookPayload("not json")).toBeUndefined();
     expect(parseClaudeHookPayload("[]")).toBeUndefined();
@@ -41,13 +46,25 @@ describe("lifecycleForClaudeHook", () => {
     expect(lifecycleForClaudeHook({ hookEventName: "SessionEnd", sessionId: "ses_1" })).toBe("pane-disappeared");
   });
 
+  it("turns a permission prompt blue, because a blocked agent needs you as much as a finished one", () => {
+    expect(lifecycleForClaudeHook({ hookEventName: "Notification", sessionId: "ses_1", message: "Claude needs your permission to use Bash" })).toBe("completed");
+  });
+
+  it("stays silent on the idle notification, which would re-blue a key already acknowledged", () => {
+    expect(lifecycleForClaudeHook({ hookEventName: "Notification", sessionId: "ses_1", message: "Claude is waiting for your input" })).toBeUndefined();
+  });
+
+  it("treats an unrecognised notification as worth your attention", () => {
+    expect(lifecycleForClaudeHook({ hookEventName: "Notification", sessionId: "ses_1", message: "Something else happened" })).toBe("completed");
+    expect(lifecycleForClaudeHook({ hookEventName: "Notification", sessionId: "ses_1" })).toBe("completed");
+  });
+
   it("ignores a finished subagent, which is not a finished turn", () => {
     expect(lifecycleForClaudeHook({ hookEventName: "SubagentStop", sessionId: "ses_1" })).toBeUndefined();
   });
 
   it("ignores every other hook event", () => {
     expect(lifecycleForClaudeHook({ hookEventName: "PreToolUse", sessionId: "ses_1" })).toBeUndefined();
-    expect(lifecycleForClaudeHook({ hookEventName: "Notification", sessionId: "ses_1" })).toBeUndefined();
     expect(lifecycleForClaudeHook({ hookEventName: "SessionStart", sessionId: "ses_1" })).toBeUndefined();
   });
 });
