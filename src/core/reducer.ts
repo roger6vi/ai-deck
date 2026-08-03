@@ -315,6 +315,20 @@ function reduceClearSlot(state: SessionState, action: ClearSlotAction): SessionS
   return freezeState(slots, state.retiredSessions, [...withoutUnassigned(state.unassignedSessions, slot.sessionId), unassignedFromSlot(slot)]);
 }
 
+/**
+ * Drops the unassigned sessions a full pane enumeration did not find, retiring
+ * each one. The slot path retires on the same evidence, and both deaths have to
+ * gate re-entry the same way or a late event could hand a dead session a key.
+ */
+function reduceRetainUnassigned(state: SessionState, action: RetainUnassignedAction): SessionState {
+  const survivors = new Set(action.sessions.map((session) => session.sessionId));
+  let retired = state.retiredSessions;
+  for (const session of state.unassignedSessions) {
+    if (!survivors.has(session.sessionId)) retired = addRetiredSession(retired, session);
+  }
+  return freezeState(state.slots, retired, action.sessions);
+}
+
 export function createSessionState(): SessionState {
   const slots = Array.from({ length: SESSION_REDUCER_LIMITS.SLOT_COUNT }, (_, index) => ({ index }));
   return freezeState(slots, [], []);
@@ -325,8 +339,6 @@ export function reduceSessionState(state: SessionState, action: SessionReducerAc
   if (action.kind === SESSION_REDUCER_ACTION.PANE_MISSING) return reducePaneMissing(state, action);
   if (action.kind === SESSION_REDUCER_ACTION.MOVE_SESSION) return reduceMoveSession(state, action);
   if (action.kind === SESSION_REDUCER_ACTION.CLEAR_SLOT) return reduceClearSlot(state, action);
-  if (action.kind === SESSION_REDUCER_ACTION.RETAIN_UNASSIGNED) {
-    return freezeState(state.slots, state.retiredSessions, action.sessions);
-  }
+  if (action.kind === SESSION_REDUCER_ACTION.RETAIN_UNASSIGNED) return reduceRetainUnassigned(state, action);
   return reducePhysicalKeyDown(state, action.slotIndex, action.sessionId, action.target, action.assignmentId);
 }
