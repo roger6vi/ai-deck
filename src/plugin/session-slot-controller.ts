@@ -261,7 +261,9 @@ export class SessionSlotController {
       this.#logNavigationFailure();
       return;
     }
-    if (outcome === NAVIGATION_OUTCOME.UNAVAILABLE) {
+    if (outcome === NAVIGATION_OUTCOME.UNAVAILABLE || outcome === NAVIGATION_OUTCOME.AMBIGUOUS) {
+      // Both abort before a single tmux command runs. Acknowledging here would
+      // tell the user they have seen a response they were never shown.
       this.#logNavigationFailure();
       return;
     }

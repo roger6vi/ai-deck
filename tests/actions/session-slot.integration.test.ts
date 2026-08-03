@@ -274,7 +274,10 @@ describe("session slot Stream Deck integration", () => {
 
     await ambiguousAction.onKeyDown({ action: ambiguousKey as unknown as KeyAction } as KeyDownEvent);
     expect(ambiguousController.state.slots[0]?.sessionId).toBe(SESSION_IDS[0]);
-    expect(imageFor(ambiguousKey)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.GREEN));
+    // Ambiguity aborts before any tmux command runs, so the user was never
+    // taken anywhere: the key must keep saying the response is unread.
+    expect(imageFor(ambiguousKey)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.BLUE));
+    expect(ambiguousController.state.slots[0]?.acknowledged).toBe(false);
   });
 
   it("contains unavailable navigation without acknowledging or exposing process details, and ignores unassigned presses", async () => {
