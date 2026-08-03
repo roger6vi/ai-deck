@@ -74,7 +74,7 @@ describe("session slot window name titles", () => {
     expect(action.setImage).toHaveBeenCalledWith(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.AMBER));
   });
 
-  it("disambiguates duplicate window names with the pane identifier on later slots", async () => {
+  it("disambiguates duplicate window names with the pane identifier on every sharing slot", async () => {
     const { controller } = controllerWith({ "%1": "kimi", "%7": "kimi" });
     const first = key("first", 0);
     const second = key("second", 1);
@@ -84,7 +84,7 @@ describe("session slot window name titles", () => {
     await controller.handleStatusEvent(status(SESSION_STATUS.STARTED, 1, SESSION_ID, "%1"), 1);
     await controller.handleStatusEvent(status(SESSION_STATUS.STARTED, 2, SESSION_ID_B, "%7"), 2);
 
-    expect(first.setTitle).toHaveBeenLastCalledWith("kimi");
+    expect(first.setTitle).toHaveBeenLastCalledWith("kimi\n·%1");
     expect(second.setTitle).toHaveBeenLastCalledWith("kimi\n·%7");
   });
 

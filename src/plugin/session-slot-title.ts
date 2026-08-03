@@ -42,15 +42,17 @@ export function resolveSlotTitles(
     if (slot.sessionId === undefined || slot.target === undefined) return undefined;
     return windowNameFor(slot.target.tmuxPaneId);
   });
-  const seen = new Set<string>();
+  const occurrences = new Map<string, number>();
+  for (const name of names) {
+    if (name !== undefined) occurrences.set(name, (occurrences.get(name) ?? 0) + 1);
+  }
   return names.map((name, index) => {
     if (name === undefined) return undefined;
-    if (!seen.has(name)) {
-      seen.add(name);
-      return name;
-    }
+    // Every slot sharing a name is marked; leaving one bare would identify it
+    // only by elimination. The pane id goes on its own line because beside the
+    // name it is unreadable at key size.
+    if ((occurrences.get(name) ?? 0) < 2) return name;
     const paneId = state.slots[index]?.target?.tmuxPaneId;
-    // The pane id goes on its own line: beside the name it is unreadable at key size.
     return paneId === undefined ? name : `${name}\n·${paneId}`;
   });
 }
