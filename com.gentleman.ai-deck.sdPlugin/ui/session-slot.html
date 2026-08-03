@@ -17,18 +17,16 @@
 <div class="hint">Choosing a session moves it to this key; occupants swap slots.</div>
 <script>
 "use strict";
-const params = new URLSearchParams(window.location.search);
-const port = params.get("port");
-const uuid = params.get("propertyInspectorUUID");
-const registerEvent = params.get("registerEvent");
 const select = document.getElementById("session");
 let socket;
 let sessions = [];
+let actionInfo;
+let inspectorUUID;
 
 function currentSlotIndex() {
   try {
-    const info = JSON.parse(params.get("actionInfo") ?? "{}");
-    return info.payload && info.payload.coordinates ? info.payload.coordinates.column : undefined;
+    const info = typeof actionInfo === "string" ? JSON.parse(actionInfo) : actionInfo;
+    return info && info.payload && info.payload.coordinates ? info.payload.coordinates.column : undefined;
   } catch {
     return undefined;
   }
@@ -54,9 +52,11 @@ function render() {
   }
 }
 
-if (port && uuid && registerEvent) {
+window.connectElgatoStreamDeckSocket = function (port, propertyInspectorUUID, registerEvent, info, inActionInfo) {
+  actionInfo = inActionInfo;
+  inspectorUUID = propertyInspectorUUID;
   socket = new WebSocket("ws://127.0.0.1:" + port);
-  socket.onopen = () => socket.send(JSON.stringify({ event: registerEvent, uuid }));
+  socket.onopen = () => socket.send(JSON.stringify({ event: registerEvent, uuid: propertyInspectorUUID }));
   socket.onmessage = (message) => {
     let data;
     try { data = JSON.parse(message.data); } catch { return; }
@@ -65,13 +65,13 @@ if (port && uuid && registerEvent) {
       render();
     }
   };
-}
+};
 
 select.addEventListener("change", () => {
   if (!socket || socket.readyState !== WebSocket.OPEN) return;
   socket.send(JSON.stringify({
     event: "sendToPlugin",
-    context: uuid,
+    context: inspectorUUID,
     payload: { type: "set-slot-session", sessionId: select.value },
   }));
 });

@@ -11,12 +11,11 @@ describe("session slot property inspector page", () => {
     expect(html).not.toMatch(/src="https?:|href="https?:/);
   });
 
-  it("registers through the Stream Deck PI socket handshake query parameters", async () => {
+  it("registers through the global connectElgatoStreamDeckSocket contract", async () => {
     const html = await readFile(PI_PATH, "utf8");
-    expect(html).toContain('params.get("port")');
-    expect(html).toContain('params.get("propertyInspectorUUID")');
-    expect(html).toContain('params.get("registerEvent")');
+    expect(html).toContain("connectElgatoStreamDeckSocket");
     expect(html).toContain("new WebSocket(");
+    expect(html).toContain("propertyInspectorUUID");
   });
 
   it("renders sessions payloads and sends set-slot-session selections", async () => {
