@@ -8,10 +8,10 @@ function processFor(outputs: readonly string[]) {
 }
 describe("Ghostty tmux navigator", () => {
   it("uses explicit argv to navigate one validated pane through one targetable client", async () => {
-    const process = processFor(["", "%1\t$0\t@1\n", "/dev/ttys001\t$0\n", "", "", ""]);
+    const process = processFor(["", "%1\t$0\t@1\n", "/dev/ttys001\t$0\n", "", "", "", ""]);
     const outcome = await createGhosttyTmuxNavigator({ process }).navigate(target);
     expect(outcome).toBe(NAVIGATION_OUTCOME.NAVIGATED);
-    expect(process.execute.mock.calls).toEqual([["tmux", ["has-session", "-t", "$0"]], ["tmux", ["list-panes", "-a", "-F", "#{pane_id}\t#{session_id}\t#{window_id}"]], ["tmux", ["list-clients", "-F", "#{client_tty}\t#{client_session}"]], ["open", ["-b", target.ghosttyBundleId]], ["tmux", ["switch-client", "-c", "/dev/ttys001", "-t", "$0"]], ["tmux", ["select-pane", "-t", "%1"]]]);
+    expect(process.execute.mock.calls).toEqual([["tmux", ["has-session", "-t", "$0"]], ["tmux", ["list-panes", "-a", "-F", "#{pane_id}\t#{session_id}\t#{window_id}"]], ["tmux", ["list-clients", "-F", "#{client_tty}\t#{session_id}"]], ["open", ["-b", target.ghosttyBundleId]], ["tmux", ["switch-client", "-c", "/dev/ttys001", "-t", "$0"]], ["tmux", ["select-window", "-t", "@1"]], ["tmux", ["select-pane", "-t", "%1"]]]);
   });
   it("returns missing without focusing when the pane is absent or its identifier was reused", async () => {
     for (const panes of ["", "%1\t$2\t@1\n", "%1\t$0\t@2\n", "%1\t$0\t@1\textra\n"]) {
@@ -31,8 +31,8 @@ describe("Ghostty tmux navigator", () => {
     }
   });
   it("contains every command-stage failure as unavailable", async () => {
-    for (let failedAt = 0; failedAt < 6; failedAt += 1) {
-      let call = 0; const outputs = ["", "%1\t$0\t@1\n", "/dev/ttys001\t$0\n", "", "", ""];
+    for (let failedAt = 0; failedAt < 7; failedAt += 1) {
+      let call = 0; const outputs = ["", "%1\t$0\t@1\n", "/dev/ttys001\t$0\n", "", "", "", ""];
       const execute = vi.fn<(command: string, args: readonly string[]) => Promise<{ readonly stdout: string }>>().mockImplementation(() => Promise.resolve(call++ === failedAt ? Promise.reject(new Error("sensitive output")) : { stdout: outputs[call - 1] ?? "" }));
       expect(await createGhosttyTmuxNavigator({ process: { execute } }).navigate(target)).toBe(NAVIGATION_OUTCOME.UNAVAILABLE);
     }
