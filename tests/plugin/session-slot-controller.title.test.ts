@@ -85,7 +85,7 @@ describe("session slot window name titles", () => {
     await controller.handleStatusEvent(status(SESSION_STATUS.STARTED, 2, SESSION_ID_B, "%7"), 2);
 
     expect(first.setTitle).toHaveBeenLastCalledWith("kimi");
-    expect(second.setTitle).toHaveBeenLastCalledWith("kimi ·%7");
+    expect(second.setTitle).toHaveBeenLastCalledWith("kimi\n·%7");
   });
 
   it("renders color-only when the window name cannot be resolved", async () => {

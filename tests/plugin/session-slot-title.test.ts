@@ -84,13 +84,13 @@ describe("resolveSlotTitles", () => {
     expect(resolveSlotTitles(state, () => undefined)[0]).toBeUndefined();
   });
 
-  it("keeps the bare name on the lowest-index duplicate and suffixes the rest with the pane id", () => {
+  it("keeps the bare name on the lowest-index duplicate and puts the pane id of the rest on its own line", () => {
     const state = stateWith([["%1", SESSION_ID, 1], ["%7", SESSION_ID_B, 2], ["%9", SESSION_ID_C, 3]]);
     const titles = resolveSlotTitles(state, () => "kimi");
 
     expect(titles[0]).toBe("kimi");
-    expect(titles[1]).toBe("kimi ·%7");
-    expect(titles[2]).toBe("kimi ·%9");
+    expect(titles[1]).toBe("kimi\n·%7");
+    expect(titles[2]).toBe("kimi\n·%9");
   });
 
   it("only groups duplicates by identical resolved names", () => {

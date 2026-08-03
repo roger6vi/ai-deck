@@ -50,6 +50,7 @@ export function resolveSlotTitles(
       return name;
     }
     const paneId = state.slots[index]?.target?.tmuxPaneId;
-    return paneId === undefined ? name : `${name} ·${paneId}`;
+    // The pane id goes on its own line: beside the name it is unreadable at key size.
+    return paneId === undefined ? name : `${name}\n·${paneId}`;
   });
 }
