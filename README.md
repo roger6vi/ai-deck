@@ -129,8 +129,38 @@ args or allowlist violation), `3` (unavailable — no plugin running),
 
 The `runAdapterEmit` function re-validates every candidate event
 through the same allowlist parser used by the plugin, so no prohibited
-field can ever leave the wrapper process. Bundling the CLI as a
-standalone binary for `PATH` install is a documented follow-up.
+field can ever leave the wrapper process.
+
+The CLI is also bundled as `bin/adapter-emit.js`, a self-contained
+script any Node runtime can execute directly:
+
+```bash
+AI_DECK_PLUGIN_ROOT=/absolute/path/to/com.gentleman.ai-deck.sdPlugin \
+  node com.gentleman.ai-deck.sdPlugin/bin/adapter-emit.js \
+    --source opencode --session-id "$SESSION_UUID" \
+    --lifecycle started --pane-id "%1" --session '$0'
+```
+
+### OpenCode adapter
+
+The bundled OpenCode adapter maps host session events to lifecycle
+events automatically: `session.status` busy/retry becomes
+`started`/`running` (amber), `session.idle` becomes `completed` (blue),
+and `session.error` becomes `error` (red). Native OpenCode session ids
+are deterministically encoded as version-4 UUIDs, so a conversation
+keeps its key across turns and restarts.
+
+Install it after building:
+
+```bash
+npm run build && npm run install:opencode
+```
+
+This copies `bin/opencode-plugin.js` to
+`~/.config/opencode/plugins/ai-deck.js`. The adapter resolves its tmux
+pane from the `TMUX_PANE` environment and emits nothing when OpenCode
+runs outside tmux. Overrides: `AI_DECK_PLUGIN_ROOT` (plugin directory)
+and `AI_DECK_NODE` (Node binary used to spawn the emit CLI).
 
 ## Privacy boundary
 

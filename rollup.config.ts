@@ -6,11 +6,17 @@ import type { PluginContext } from "rollup";
 const pluginDirectory = "com.gentleman.ai-deck.sdPlugin";
 const outputDirectory = process.env.AI_DECK_OUTPUT_DIRECTORY ?? `${pluginDirectory}/bin`;
 
-export default {
-  input: "src/plugin.ts",
+const entries = [
+  { input: "src/plugin.ts", file: "plugin.js" },
+  { input: "src/cli/adapter-emit.ts", file: "adapter-emit.js" },
+  { input: "src/adapters/opencode-plugin.ts", file: "opencode-plugin.js" },
+] as const;
+
+export default entries.map(({ input, file }) => ({
+  input,
   output: {
-    file: `${outputDirectory}/plugin.js`,
-    format: "es",
+    file: `${outputDirectory}/${file}`,
+    format: "es" as const,
   },
   plugins: [
     typescript({ compilerOptions: { outDir: outputDirectory }, tsconfig: "./tsconfig.build.json" }),
@@ -26,4 +32,4 @@ export default {
       },
     },
   ],
-};
+}));

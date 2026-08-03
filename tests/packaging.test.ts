@@ -18,6 +18,8 @@ const PACKAGE_FILES = [
   "manifest.json",
   "bin/package.json",
   "bin/plugin.js",
+  "bin/adapter-emit.js",
+  "bin/opencode-plugin.js",
   "assets/action.png",
   "assets/action@2x.png",
   "assets/key.png",

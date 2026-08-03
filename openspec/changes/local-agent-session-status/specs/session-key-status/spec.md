@@ -7,6 +7,8 @@ The system MUST expose exactly five session keys, assign first-free, and keep ea
 
 Each assigned key MUST display the session's tmux window name as its title. The name MUST be resolved locally from tmux by the plugin (never transported in adapter events), MUST be stripped of control characters and length-bounded, and MUST fall back to a color-only key when tmux cannot provide it. When multiple assigned slots resolve to the same window name, the lowest-index slot MUST show the bare name and every other duplicate MUST append its pane identifier as a suffix. Releasing a slot MUST clear its title.
 
+The OpenCode adapter MUST observe the host's session events and emit normalized lifecycle events through the adapter emit CLI: `session.status` busy or retry MUST emit `started` for the first observed activity of a native session and `running` afterwards, `session.idle` MUST emit `completed`, and `session.error` MUST emit `error`. Native session identifiers MUST be deterministically encoded as RFC 4122 version-4 UUIDs so a conversation keeps its slot across events and host restarts. The adapter MUST resolve its tmux pane from the process environment and MUST emit nothing when it is not running inside tmux.
+
 #### Scenario: Two OpenCode sessions
 - GIVEN two OpenCode sessions and five free keys
 - WHEN both become active
