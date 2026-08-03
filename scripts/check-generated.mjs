@@ -39,6 +39,7 @@ export const GENERATED_OUTPUTS = Object.freeze([
  */
 export const TRACKED_BUILD_OUTPUTS = Object.freeze([
   "claude-code-plugin/hooks/claude-hook.mjs",
+  "codex-plugin/hooks/codex-hook.mjs",
 ]);
 
 export function classifyGeneratedStatus(status) {

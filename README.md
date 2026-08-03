@@ -201,6 +201,34 @@ break a Claude Code session. It emits nothing when Claude Code runs
 outside tmux, and it finds the Stream Deck plugin at its standard install
 path unless `AI_DECK_PLUGIN_ROOT` overrides it.
 
+### Codex adapter
+
+Codex names every lifecycle event separately, so the adapter ships as a
+Codex plugin whose hook entries each declare their own lifecycle:
+`UserPromptSubmit` → `started` (amber), `Stop` → `completed` (blue),
+`PermissionRequest` → `completed`, and `SessionEnd` → `pane-disappeared`.
+The script never guesses a lifecycle from the payload; it validates the
+one its hook entry passed against an allowlist and ignores anything else.
+
+`PermissionRequest` is why Codex needs no message parsing: where Claude
+Code raises one `Notification` for both a permission prompt and mere
+idling, Codex raises a dedicated event.
+
+```
+codex plugin marketplace add roger6vi/ai-deck
+codex plugin add ai-deck-codex@ai-deck
+```
+
+The plugin lives in `codex-plugin/`, published by
+`.agents/plugins/marketplace.json`, and locates its hook through
+`${PLUGIN_ROOT}` — Codex's variable, not Claude Code's
+`${CLAUDE_PLUGIN_ROOT}`. Its bundle is committed for the same reason the
+Claude Code one is.
+
+This adapter deliberately does not use Codex's `notify` program: that
+setting holds a single command, and taking it would silently displace
+whatever the user already had there.
+
 ## Privacy boundary
 
 The event contract lives in `src/core/types.ts` and `src/core/events.ts`.
