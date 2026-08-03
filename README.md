@@ -162,6 +162,38 @@ pane from the `TMUX_PANE` environment and emits nothing when OpenCode
 runs outside tmux. Overrides: `AI_DECK_PLUGIN_ROOT` (plugin directory)
 and `AI_DECK_NODE` (Node binary used to spawn the emit CLI).
 
+### Claude Code adapter
+
+Claude Code has no in-process plugin surface, so the bundled adapter is a
+hook script registered in `~/.claude/settings.json`: `UserPromptSubmit`
+becomes `started` (amber), `Stop` becomes `completed` (blue), and
+`SessionEnd` becomes `pane-disappeared`, which releases the key. A
+finished subagent (`SubagentStop`) is not a finished turn and emits
+nothing.
+
+Every hook runs as a fresh process, so no state survives between
+invocations and each submitted prompt reports `started` — the deck paints
+`started` and `running` the same amber. Native Claude Code session ids are
+deterministically encoded as version-4 UUIDs, so a conversation keeps its
+key across turns.
+
+Install it after building:
+
+```bash
+npm run build && npm run install:claude
+```
+
+This registers one command hook per event, pinned to the current Node
+binary and to `bin/claude-hook.js` under the installed plugin directory.
+Re-running the installer replaces its own previous registration instead of
+duplicating it, and leaves every unrelated setting and hook untouched.
+Restart running Claude Code sessions to load the hooks.
+
+The hook always exits `0`. A non-zero hook exit code is a control signal
+for Claude Code — on `UserPromptSubmit` it discards the prompt — so a
+Stream Deck that is closed, unreachable, or slow can never break a Claude
+Code session. It also emits nothing when Claude Code runs outside tmux.
+
 ## Privacy boundary
 
 The event contract lives in `src/core/types.ts` and `src/core/events.ts`.

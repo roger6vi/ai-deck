@@ -1,6 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import {
   ENDPOINT_CLIENT_OUTCOME,
@@ -11,16 +9,12 @@ import {
 } from "../adapters/endpoint-client";
 import { isLocalAgentStatusEvent } from "../core/events";
 import type { LocalAgentStatusEvent } from "../core/types";
+import { ADAPTER_EMIT_EXIT_CODE, isDirectCliInvocation } from "./adapter-emit-contract";
 
-export const ADAPTER_EMIT_EXIT_CODE = {
-  EMITTED: 0,
-  REJECTED: 2,
-  UNAVAILABLE: 3,
-  TIMED_OUT: 4,
-  LOCAL_ERROR: 5,
-} as const;
+export { ADAPTER_EMIT_EXIT_CODE, isDirectCliInvocation } from "./adapter-emit-contract";
+export type { AdapterEmitExitCode } from "./adapter-emit-contract";
 
-export type AdapterEmitExitCode = (typeof ADAPTER_EMIT_EXIT_CODE)[keyof typeof ADAPTER_EMIT_EXIT_CODE];
+type AdapterEmitExitCode = (typeof ADAPTER_EMIT_EXIT_CODE)[keyof typeof ADAPTER_EMIT_EXIT_CODE];
 
 export const ADAPTER_EMIT_OUTCOME_MESSAGE = {
   EMITTED: "ai-deck: emitted",
@@ -158,11 +152,6 @@ export function createProductionAdapterEmitClient(pluginRoot: string): EndpointC
     timer: productionEndpointClientDependencies.timer,
     ownUid: getUid(),
   });
-}
-
-export function isDirectCliInvocation(moduleUrl: string, entryPath: string | undefined, cwd: string = process.cwd()): boolean {
-  if (entryPath === undefined) return false;
-  return resolve(cwd, entryPath) === resolve(fileURLToPath(moduleUrl));
 }
 
 export interface AdapterEmitMainOptions {

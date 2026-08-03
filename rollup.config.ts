@@ -10,6 +10,7 @@ const entries = [
   { input: "src/plugin.ts", file: "plugin.js" },
   { input: "src/cli/adapter-emit.ts", file: "adapter-emit.js" },
   { input: "src/adapters/opencode-plugin.ts", file: "opencode-plugin.js" },
+  { input: "src/adapters/claude-hook.ts", file: "claude-hook.js" },
 ] as const;
 
 export default entries.map(({ input, file }) => ({

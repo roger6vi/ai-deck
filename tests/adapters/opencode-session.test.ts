@@ -1,23 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  deriveAdapterSessionId,
-  OpenCodeSessionTracker,
-} from "../../src/adapters/opencode-session";
-
-const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-
-describe("deriveAdapterSessionId", () => {
-  it("encodes any native session id as a deterministic RFC 4122 version-4 UUID", () => {
-    const first = deriveAdapterSessionId("ses_abc123");
-    expect(first).toMatch(UUID_V4_PATTERN);
-    expect(deriveAdapterSessionId("ses_abc123")).toBe(first);
-  });
-
-  it("gives distinct native ids distinct UUIDs", () => {
-    expect(deriveAdapterSessionId("ses_a")).not.toBe(deriveAdapterSessionId("ses_b"));
-  });
-});
+import { OpenCodeSessionTracker } from "../../src/adapters/opencode-session";
 
 describe("OpenCodeSessionTracker", () => {
   it("emits started for the first busy activity of a session and running afterwards", () => {
