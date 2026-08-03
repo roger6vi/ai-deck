@@ -262,6 +262,54 @@ describe("session status reducer", () => {
     expect(cleared.slots[1]?.target?.tmuxPaneId).toBe("%2");
   });
 
+  it("retires the least recently active unassigned session instead of dropping it silently", () => {
+    const limit = SESSION_REDUCER_LIMITS.UNASSIGNED_SESSION_LIMIT;
+    const id = (n: number) => `${(n + 10).toString(16).padStart(8, "0")}-e89b-42d3-a456-426614174000`;
+    let state = createSessionState();
+    // Fill the unassigned bucket past its cap, one session at a time.
+    for (let n = 0; n <= limit; n += 1) {
+      state = apply(state, event({ eventNumber: n + 1, sessionId: id(n), tmuxPaneId: `%${n + 1}` }));
+      state = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 0 });
+    }
+
+    expect(state.unassignedSessions).toHaveLength(limit);
+    // The evicted one must be accounted for, not vanished.
+    expect(state.unassignedSessions.some((session) => session.sessionId === id(0))).toBe(false);
+    expect(state.retiredSessions.some((session) => session.sessionId === id(0))).toBe(true);
+  });
+
+  it("does not hand a free key to a session that was evicted from the unassigned bucket", () => {
+    const limit = SESSION_REDUCER_LIMITS.UNASSIGNED_SESSION_LIMIT;
+    const id = (n: number) => `${(n + 10).toString(16).padStart(8, "0")}-e89b-42d3-a456-426614174000`;
+    let state = createSessionState();
+    for (let n = 0; n <= limit; n += 1) {
+      state = apply(state, event({ eventNumber: n + 1, sessionId: id(n), tmuxPaneId: `%${n + 1}` }));
+      state = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 0 });
+    }
+
+    const late = apply(state, event({ eventNumber: 90, sessionId: id(0), tmuxPaneId: "%1", lifecycle: SESSION_STATUS.COMPLETED }));
+
+    expect(late.slots.every((slot) => slot.sessionId !== id(0))).toBe(true);
+  });
+
+  it("keeps a still-active unassigned session alive by refreshing its place in the bucket", () => {
+    const limit = SESSION_REDUCER_LIMITS.UNASSIGNED_SESSION_LIMIT;
+    const id = (n: number) => `${(n + 10).toString(16).padStart(8, "0")}-e89b-42d3-a456-426614174000`;
+    let state = createSessionState();
+    for (let n = 0; n < limit; n += 1) {
+      state = apply(state, event({ eventNumber: n + 1, sessionId: id(n), tmuxPaneId: `%${n + 1}` }));
+      state = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 0 });
+    }
+    // The oldest entry reports activity, so it is no longer the oldest.
+    state = apply(state, event({ eventNumber: 80, sessionId: id(0), tmuxPaneId: "%1", lifecycle: SESSION_STATUS.COMPLETED }));
+
+    state = apply(state, event({ eventNumber: 81, sessionId: id(limit), tmuxPaneId: `%${limit + 1}` }));
+    state = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 0 });
+
+    expect(state.unassignedSessions.some((session) => session.sessionId === id(0))).toBe(true);
+    expect(state.unassignedSessions.some((session) => session.sessionId === id(1))).toBe(false);
+  });
+
   it("keeps a cleared session known and unassigned instead of destroying it", () => {
     const state = apply(createSessionState(), event({ sessionId: SESSION_IDS[0], tmuxPaneId: "%1" }));
     const assignmentId = state.slots[0]?.assignmentId;

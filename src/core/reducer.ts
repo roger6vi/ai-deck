@@ -100,17 +100,35 @@ function copyTarget(target: LocalAgentTargetMetadata): LocalAgentTargetMetadata 
   return Object.freeze(target.tmuxWindow === undefined ? copied : { ...copied, tmuxWindow: target.tmuxWindow });
 }
 
+/**
+ * Bounds the unassigned bucket without losing anything: whatever no longer
+ * fits is retired, which is what keeps the resurrection guard in `reduceEvent`
+ * able to recognise it. The bucket is ordered least-recently-active first, so
+ * eviction takes the stalest session rather than the first one ever added.
+ */
+function boundUnassigned(
+  unassignedSessions: readonly UnassignedSession[],
+  retiredSessions: readonly RetiredSession[],
+): { readonly unassigned: readonly UnassignedSession[]; readonly retired: readonly RetiredSession[] } {
+  const overflow = unassignedSessions.length - SESSION_REDUCER_LIMITS.UNASSIGNED_SESSION_LIMIT;
+  if (overflow <= 0) return { unassigned: unassignedSessions, retired: retiredSessions };
+  let retired = retiredSessions;
+  for (const evicted of unassignedSessions.slice(0, overflow)) {
+    retired = addRetiredSession(retired, evicted);
+  }
+  return { unassigned: unassignedSessions.slice(overflow), retired };
+}
+
 function freezeState(
   slots: readonly SessionSlot[],
   retiredSessions: readonly RetiredSession[],
   unassignedSessions: readonly UnassignedSession[],
 ): SessionState {
+  const bounded = boundUnassigned(unassignedSessions, retiredSessions);
   return Object.freeze({
     slots: Object.freeze(slots.map((slot) => Object.freeze({ ...slot }))),
-    unassignedSessions: Object.freeze(
-      unassignedSessions.slice(-SESSION_REDUCER_LIMITS.UNASSIGNED_SESSION_LIMIT).map((session) => Object.freeze({ ...session })),
-    ),
-    retiredSessions: Object.freeze(retiredSessions.map((session) => Object.freeze({ ...session }))),
+    unassignedSessions: Object.freeze(bounded.unassigned.map((session) => Object.freeze({ ...session }))),
+    retiredSessions: Object.freeze(bounded.retired.map((session) => Object.freeze({ ...session }))),
   });
 }
 
@@ -169,7 +187,7 @@ function addRetired(retiredSessions: readonly RetiredSession[], event: LocalAgen
     .slice(-SESSION_REDUCER_LIMITS.RETIRED_SESSION_LIMIT);
 }
 
-function addRetiredSlot(retiredSessions: readonly RetiredSession[], slot: SessionSlot): readonly RetiredSession[] {
+function addRetiredSession(retiredSessions: readonly RetiredSession[], slot: UnassignedSession): readonly RetiredSession[] {
   if (slot.sessionId === undefined || slot.lastEventId === undefined || slot.lastTimestamp === undefined) return retiredSessions;
   const retired: RetiredSession = {
     sessionId: slot.sessionId,
@@ -212,10 +230,12 @@ function reduceEvent(state: SessionState, event: LocalAgentStatusEvent): Session
       return freezeState(state.slots, addRetired(state.retiredSessions, event), withoutUnassigned(state.unassignedSessions, event.sessionId));
     }
     const updated = unassignedFromSlot(slotFromEvent(0, event, existing.assignmentId ?? event.eventId, existing.runningSince));
+    // Reporting activity moves it to the freshest end of the bucket, so a
+    // session still in use is never the one evicted.
     return freezeState(
       state.slots,
       state.retiredSessions,
-      state.unassignedSessions.map((session, index) => index === unassignedIndex ? updated : session),
+      [...withoutUnassigned(state.unassignedSessions, event.sessionId), updated],
     );
   }
 
@@ -255,7 +275,7 @@ function reducePaneMissing(state: SessionState, action: PaneMissingAction): Sess
   const slot = state.slots[action.slotIndex];
   if (slot === undefined || !matchesAssignment(slot, action.sessionId, action.target, action.assignmentId)) return state;
   const slots = state.slots.map((current) => current.index === action.slotIndex ? { index: current.index } : current);
-  return freezeState(slots, addRetiredSlot(state.retiredSessions, slot), state.unassignedSessions);
+  return freezeState(slots, addRetiredSession(state.retiredSessions, slot), state.unassignedSessions);
 }
 
 function reduceMoveSession(state: SessionState, action: MoveSessionAction): SessionState {
