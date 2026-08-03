@@ -177,22 +177,29 @@ invocations and each submitted prompt reports `started` — the deck paints
 deterministically encoded as version-4 UUIDs, so a conversation keeps its
 key across turns.
 
-Install it after building:
+The hooks ship as a Claude Code plugin, so the same install works on any
+Mac without editing `~/.claude/settings.json` by hand:
 
-```bash
-npm run build && npm run install:claude
+```
+/plugin marketplace add roger6vi/ai-deck
+/plugin install ai-deck-claude@ai-deck
 ```
 
-This registers one command hook per event, pinned to the current Node
-binary and to `bin/claude-hook.js` under the installed plugin directory.
-Re-running the installer replaces its own previous registration instead of
-duplicating it, and leaves every unrelated setting and hook untouched.
-Restart running Claude Code sessions to load the hooks.
+The plugin lives in `claude-code-plugin/`, and its hook commands locate
+the script through `${CLAUDE_PLUGIN_ROOT}` rather than an absolute path.
+Its bundle `claude-code-plugin/hooks/claude-hook.mjs` is a build output
+that is committed on purpose — the plugin is distributed by cloning this
+repository, so an ignored build artifact would never reach the other
+machine. `npm run build` rewrites it and `npm run check:generated` fails
+on a stale copy.
 
-The hook always exits `0`. A non-zero hook exit code is a control signal
-for Claude Code — on `UserPromptSubmit` it discards the prompt — so a
-Stream Deck that is closed, unreachable, or slow can never break a Claude
-Code session. It also emits nothing when Claude Code runs outside tmux.
+The hook always exits `0`, and its command ends in `|| true` for the case
+where `node` is missing from `PATH`. A non-zero hook exit code is a
+control signal for Claude Code — on `UserPromptSubmit` it discards the
+prompt — so a Stream Deck that is closed, unreachable, or slow can never
+break a Claude Code session. It emits nothing when Claude Code runs
+outside tmux, and it finds the Stream Deck plugin at its standard install
+path unless `AI_DECK_PLUGIN_ROOT` overrides it.
 
 ## Privacy boundary
 

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "ai-deck",
+  "description": "Local coding-agent session status on a Stream Deck",
+  "owner": {
+    "name": "roger6vi"
+  },
+  "plugins": [
+    {
+      "name": "ai-deck-claude",
+      "description": "Reports Claude Code session lifecycle to the AI Deck Stream Deck plugin running on the same Mac",
+      "version": "0.1.0",
+      "author": {
+        "name": "roger6vi"
+      },
+      "source": "./claude-code-plugin",
+      "category": "productivity",
+      "homepage": "https://github.com/roger6vi/ai-deck"
+    }
+  ]
+}

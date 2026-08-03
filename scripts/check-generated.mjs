@@ -32,6 +32,15 @@ export const GENERATED_OUTPUTS = Object.freeze([
   PROFILE_FILE,
 ]);
 
+/**
+ * Build outputs that ship by being committed rather than packaged. `npm run
+ * build` rewrites them, so any drift here means the tree carries a stale copy
+ * of what the Claude Code plugin distributes.
+ */
+export const TRACKED_BUILD_OUTPUTS = Object.freeze([
+  "claude-code-plugin/hooks/claude-hook.mjs",
+]);
+
 export function classifyGeneratedStatus(status) {
   const driftedOutputs = status.filter((line) => {
     if (line.startsWith("??")) return true;
@@ -186,6 +195,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     "--untracked-files=all",
     "--",
     ...GENERATED_OUTPUTS,
+    ...TRACKED_BUILD_OUTPUTS,
   ]);
   assertGeneratedState(stdout.trim() === "" ? [] : stdout.trim().split("\n"));
   await assertGeneratedArtifacts();

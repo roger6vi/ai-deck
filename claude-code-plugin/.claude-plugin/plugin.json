@@ -1,0 +1,10 @@
+{
+  "name": "ai-deck-claude",
+  "description": "Reports Claude Code session lifecycle to the AI Deck Stream Deck plugin running on the same Mac. Emits nothing but a session id and its tmux target — never prompts, transcripts, tool output, or secrets.",
+  "version": "0.1.0",
+  "author": {
+    "name": "roger6vi"
+  },
+  "homepage": "https://github.com/roger6vi/ai-deck",
+  "repository": "https://github.com/roger6vi/ai-deck"
+}

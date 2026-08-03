@@ -18,6 +18,9 @@ const HOOK_EVENT_LIFECYCLE: Readonly<Record<string, SessionStatus>> = {
   SessionEnd: SESSION_STATUS.PANE_DISAPPEARED,
 };
 
+/** The hook events the bundled Claude Code plugin has to register. */
+export const CLAUDE_HOOK_EVENTS: readonly string[] = Object.freeze(Object.keys(HOOK_EVENT_LIFECYCLE));
+
 export function parseClaudeHookPayload(raw: string): ClaudeHookPayload | undefined {
   let candidate: unknown;
   try {

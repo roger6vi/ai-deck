@@ -25,8 +25,7 @@
     "pack": "npm run build && npm run generate && npm run check:generated && npm run validate:profile && npm run validate:plugin && rm -rf com.gentleman.ai-deck.sdPlugin/bin.previous com.gentleman.ai-deck.sdPlugin/bin.next .package-stage && node scripts/pack-plugin.mjs",
     "audit:production": "npm audit --omit=dev --audit-level=low",
     "verify": "npm test && npm run typecheck && npm run audit:production && npm run pack && npm run smoke:runtime",
-    "install:opencode": "node scripts/install-opencode-adapter.mjs",
-    "install:claude": "node scripts/install-claude-adapter.mjs"
+    "install:opencode": "node scripts/install-opencode-adapter.mjs"
   },
   "dependencies": {
     "@elgato/streamdeck": "2.1.0"
