@@ -89,12 +89,13 @@ describe("session status reducer", () => {
     expect(assignedIds(reused)).toEqual([SESSION_IDS[5], ...SESSION_IDS.slice(1, 5)]);
   });
 
-  it("derives free, running, overdue, completed, error, and acknowledged colors at the exact boundary", () => {
+  it("derives free, running, completed, error, and acknowledged colors independent of elapsed time", () => {
     let state = apply(createSessionState(), event({ timestamp: 0 }));
     const runningSlot = state.slots[0];
     expect(deriveSlotColor(state.slots[1], 0)).toBe(SESSION_SLOT_COLOR.GRAY);
     expect(deriveSlotColor(runningSlot, FIVE_MINUTES - 1)).toBe(SESSION_SLOT_COLOR.AMBER);
-    expect(deriveSlotColor(runningSlot, FIVE_MINUTES)).toBe(SESSION_SLOT_COLOR.RED);
+    expect(deriveSlotColor(runningSlot, FIVE_MINUTES)).toBe(SESSION_SLOT_COLOR.AMBER);
+    expect(deriveSlotColor(runningSlot, Number.MAX_SAFE_INTEGER)).toBe(SESSION_SLOT_COLOR.AMBER);
     expect(runningSlot?.lifecycle).toBe(SESSION_STATUS.STARTED);
 
     state = apply(state, event({ eventNumber: 2, lifecycle: SESSION_STATUS.COMPLETED, timestamp: 1 }));
@@ -218,6 +219,6 @@ describe("session status reducer", () => {
     const second = apply(initial, statusEvent);
 
     expect(first).toEqual(second);
-    expect(deriveSlotColor(first.slots[0], 123 + FIVE_MINUTES)).toBe(SESSION_SLOT_COLOR.RED);
+    expect(deriveSlotColor(first.slots[0], 123 + FIVE_MINUTES)).toBe(SESSION_SLOT_COLOR.AMBER);
   });
 });

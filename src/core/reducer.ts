@@ -1,6 +1,6 @@
 import { SESSION_STATUS, type LocalAgentStatusEvent, type LocalAgentTargetMetadata } from "./types";
 
-export { deriveSlotColor, SESSION_SLOT_COLOR, SESSION_COLOR_LIMITS } from "./colors";
+export { deriveSlotColor, SESSION_SLOT_COLOR } from "./colors";
 
 export const SESSION_REDUCER_ACTION = {
   EVENT: "event",

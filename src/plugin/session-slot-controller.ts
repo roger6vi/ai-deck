@@ -8,7 +8,7 @@ import {
   SESSION_REDUCER_LIMITS,
   type SessionState,
 } from "../core/reducer";
-import { SESSION_COLOR_LIMITS, SESSION_SLOT_COLOR, SESSION_SLOT_SVG_PAINT, type SessionSlotColor } from "../core/colors";
+import { SESSION_SLOT_COLOR, SESSION_SLOT_SVG_PAINT, type SessionSlotColor } from "../core/colors";
 import { SESSION_STATUS, type LocalAgentStatusEvent } from "../core/types";
 import {
   NAVIGATION_OUTCOME,
@@ -74,10 +74,8 @@ interface VisibleSessionSlot {
   readonly action: KeyAction;
   readonly slotIndex: number;
   renderGeneration: number;
-  advisoryGeneration: number;
   retryGeneration: number;
   renderedColor?: SessionSlotColor;
-  advisoryTimer?: unknown;
   retryTimer?: unknown;
 }
 
@@ -130,7 +128,7 @@ export class SessionSlotController {
     const action = event.action as KeyAction;
     const priorVisible = this.#visibleActions.get(action.id);
     if (priorVisible !== undefined) this.#cancelVisibleWork(priorVisible);
-    const visible: VisibleSessionSlot = { action, slotIndex, renderGeneration: 0, advisoryGeneration: 0, retryGeneration: 0 };
+    const visible: VisibleSessionSlot = { action, slotIndex, renderGeneration: 0, retryGeneration: 0 };
     this.#visibleActions.set(action.id, visible);
     await this.#refreshVisible(visible, this.#state, true, this.options.clock.now());
   }
@@ -214,7 +212,6 @@ export class SessionSlotController {
   }
 
   async #refreshVisible(visible: VisibleSessionSlot, state: SessionState, force: boolean, now: number): Promise<void> {
-    this.#cancelAdvisory(visible);
     this.#cancelRetry(visible);
     const generation = visible.renderGeneration + 1;
     visible.renderGeneration = generation;
@@ -222,52 +219,7 @@ export class SessionSlotController {
     if (renderResult === SESSION_SLOT_RENDER_RESULT.FAILED) {
       this.#logRenderFailure();
       this.#scheduleRetry(visible, generation);
-      return;
     }
-    if (this.#visibleActions.get(visible.action.id) !== visible || visible.renderGeneration !== generation) return;
-    const freshNow = Math.max(now, this.options.clock.now());
-    if (this.#scheduleDeadlineRefresh(visible, state, freshNow, generation)) return;
-    this.#scheduleAdvisory(visible, state, freshNow, generation);
-  }
-
-  #scheduleDeadlineRefresh(visible: VisibleSessionSlot, state: SessionState, now: number, renderGeneration: number): boolean {
-    const slot = state.slots[visible.slotIndex];
-    const deadline = slot?.runningSince === undefined ? undefined : slot.runningSince + SESSION_COLOR_LIMITS.RUNNING_ADVISORY_MS;
-    const isRunning = slot?.lifecycle === SESSION_STATUS.STARTED || slot?.lifecycle === SESSION_STATUS.RUNNING;
-    if (!isRunning || visible.renderedColor !== SESSION_SLOT_COLOR.AMBER || deadline === undefined || now < deadline) return false;
-    this.#cancelAdvisory(visible);
-    const generation = visible.advisoryGeneration + 1;
-    visible.advisoryGeneration = generation;
-    visible.advisoryTimer = this.options.scheduler.schedule(() => {
-      if (visible.advisoryGeneration !== generation || visible.renderGeneration !== renderGeneration || this.#visibleActions.get(visible.action.id) !== visible) return;
-      visible.advisoryTimer = undefined;
-      void this.#refreshVisible(visible, this.#state, false, Math.max(this.options.clock.now(), deadline));
-    }, 0);
-    return true;
-  }
-
-  #scheduleAdvisory(visible: VisibleSessionSlot, state: SessionState, now: number, renderGeneration: number): void {
-    if (this.#visibleActions.get(visible.action.id) !== visible || visible.renderGeneration !== renderGeneration) return;
-    const slot = state.slots[visible.slotIndex];
-    if (slot?.lifecycle !== SESSION_STATUS.STARTED && slot?.lifecycle !== SESSION_STATUS.RUNNING) return;
-    if (slot.runningSince === undefined || deriveSlotColor(slot, now) !== SESSION_SLOT_COLOR.AMBER) return;
-    const deadline = slot.runningSince + SESSION_COLOR_LIMITS.RUNNING_ADVISORY_MS;
-    if (now >= deadline) return;
-    this.#cancelAdvisory(visible);
-    const generation = visible.advisoryGeneration + 1;
-    visible.advisoryGeneration = generation;
-    visible.advisoryTimer = this.options.scheduler.schedule(() => {
-      if (visible.advisoryGeneration !== generation || visible.renderGeneration !== renderGeneration || this.#visibleActions.get(visible.action.id) !== visible) return;
-      visible.advisoryTimer = undefined;
-      void this.#refreshVisible(visible, this.#state, false, this.options.clock.now());
-    }, deadline - now);
-  }
-
-  #cancelAdvisory(visible: VisibleSessionSlot): void {
-    if (visible.advisoryTimer === undefined) return;
-    this.options.scheduler.cancel(visible.advisoryTimer);
-    visible.advisoryTimer = undefined;
-    visible.advisoryGeneration += 1;
   }
 
   #scheduleRetry(visible: VisibleSessionSlot, renderGeneration: number): void {
@@ -287,11 +239,7 @@ export class SessionSlotController {
     const renderResult = await this.#renderVisible(visible, this.#state, false, now, generation);
     if (renderResult === SESSION_SLOT_RENDER_RESULT.FAILED) {
       this.#logRenderFailure();
-      return;
     }
-    if (this.#visibleActions.get(visible.action.id) !== visible || visible.renderGeneration !== generation) return;
-    if (this.#scheduleDeadlineRefresh(visible, this.#state, now, generation)) return;
-    this.#scheduleAdvisory(visible, this.#state, now, generation);
   }
 
   #cancelRetry(visible: VisibleSessionSlot): void {
@@ -303,7 +251,6 @@ export class SessionSlotController {
   }
 
   #cancelVisibleWork(visible: VisibleSessionSlot): void {
-    this.#cancelAdvisory(visible);
     this.#cancelRetry(visible);
   }
 

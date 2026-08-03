@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { KeyAction, KeyDownEvent, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
 
 import { SessionSlotActionBase } from "../../src/actions/session-slot-base";
-import { SESSION_COLOR_LIMITS, SESSION_SLOT_COLOR } from "../../src/core/colors";
+import { SESSION_SLOT_COLOR } from "../../src/core/colors";
 import { SESSION_REDUCER_LIMITS } from "../../src/core/reducer";
 import { SESSION_STATUS, type LocalAgentStatusEvent } from "../../src/core/types";
 import { NAVIGATION_OUTCOME, type AssignedTargetNavigator } from "../../src/navigation/ghostty-tmux";
@@ -142,7 +142,7 @@ describe("session slot Stream Deck integration", () => {
     expect(controller.visibleContextCount).toBe(SESSION_REDUCER_LIMITS.SLOT_COUNT);
   });
 
-  it("renders only affected visible contexts for lifecycle and bounded advisory changes", async () => {
+  it("renders only affected visible contexts for lifecycle changes, keeping running amber and reserving red for errors", async () => {
     const controller = new SessionSlotController();
     const first = key("first", 0);
     const second = key("second", 1);
@@ -151,10 +151,8 @@ describe("session slot Stream Deck integration", () => {
 
     await controller.handleStatusEvent(status(), 1);
     expect(imageFor(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.AMBER));
-    await controller.refresh(1 + SESSION_COLOR_LIMITS.RUNNING_ADVISORY_MS - 1);
+    await controller.refresh(Number.MAX_SAFE_INTEGER);
     expect(imageFor(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.AMBER));
-    await controller.refresh(1 + SESSION_COLOR_LIMITS.RUNNING_ADVISORY_MS);
-    expect(imageFor(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.RED));
     await controller.handleStatusEvent(status({ eventId: "de305d54-75b4-431b-adb2-eb6b9e546002", lifecycle: SESSION_STATUS.ERROR, timestamp: 2 }), 2);
     expect(imageFor(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.RED));
     await controller.handleStatusEvent(status({ eventId: "de305d54-75b4-431b-adb2-eb6b9e546003", lifecycle: SESSION_STATUS.COMPLETED, timestamp: 3 }), 3);
