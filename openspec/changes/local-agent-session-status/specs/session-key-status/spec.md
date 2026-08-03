@@ -9,6 +9,8 @@ Each assigned key MUST display the session's tmux window name as its title. The 
 
 The OpenCode adapter MUST observe the host's session events and emit normalized lifecycle events through the adapter emit CLI: `session.status` busy or retry MUST emit `started` for the first observed activity of a native session and `running` afterwards, `session.idle` MUST emit `completed`, and `session.error` MUST emit `error`. Native session identifiers MUST be deterministically encoded as RFC 4122 version-4 UUIDs so a conversation keeps its slot across events and host restarts. The adapter MUST resolve its tmux pane from the process environment and MUST emit nothing when it is not running inside tmux.
 
+Each key's property inspector MUST offer a dropdown of the currently assigned sessions, labeled with the resolved title, tool source, and lifecycle. Selecting a session MUST move it to that key's slot; when the slot is occupied, the two sessions MUST swap slots while each keeps its assignment identity. Selections MUST take effect immediately (re-render and persist through the normal state save) and the inspector MUST receive updated session lists on every state change while open. Malformed, unknown, or stale selections MUST be ignored without changing state.
+
 #### Scenario: Two OpenCode sessions
 - GIVEN two OpenCode sessions and five free keys
 - WHEN both become active

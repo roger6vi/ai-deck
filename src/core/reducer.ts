@@ -6,6 +6,7 @@ export const SESSION_REDUCER_ACTION = {
   EVENT: "event",
   PHYSICAL_KEY_DOWN: "physical-key-down",
   PANE_MISSING: "pane-missing",
+  MOVE_SESSION: "move-session",
 } as const;
 
 export const SESSION_REDUCER_LIMITS = {
@@ -60,7 +61,13 @@ export interface PaneMissingAction {
   readonly assignmentId: string;
 }
 
-export type SessionReducerAction = SessionEventAction | PhysicalKeyDownAction | PaneMissingAction;
+export interface MoveSessionAction {
+  readonly kind: typeof SESSION_REDUCER_ACTION.MOVE_SESSION;
+  readonly sessionId: string;
+  readonly slotIndex: number;
+}
+
+export type SessionReducerAction = SessionEventAction | PhysicalKeyDownAction | PaneMissingAction | MoveSessionAction;
 
 function copyTarget(target: LocalAgentTargetMetadata): LocalAgentTargetMetadata {
   const copied = {
@@ -190,8 +197,23 @@ function reducePhysicalKeyDown(
 function reducePaneMissing(state: SessionState, action: PaneMissingAction): SessionState {
   const slot = state.slots[action.slotIndex];
   if (slot === undefined || !matchesAssignment(slot, action.sessionId, action.target, action.assignmentId)) return state;
-  const slots = state.slots.map((current) => current.index === action.slotIndex ? { index: action.slotIndex } : current);
+  const slots = state.slots.map((current) => current.index === action.slotIndex ? { index: current.index } : current);
   return freezeState(slots, addRetiredSlot(state.retiredSessions, slot));
+}
+
+function reduceMoveSession(state: SessionState, action: MoveSessionAction): SessionState {
+  if (!Number.isInteger(action.slotIndex) || action.slotIndex < 0 || action.slotIndex >= state.slots.length) return state;
+  const fromIndex = state.slots.findIndex((slot) => slot.sessionId === action.sessionId);
+  if (fromIndex < 0 || fromIndex === action.slotIndex) return state;
+  const from = state.slots[fromIndex];
+  const to = state.slots[action.slotIndex];
+  if (from === undefined || to === undefined) return state;
+  const slots = state.slots.map((slot) => {
+    if (slot.index === fromIndex) return { ...to, index: fromIndex };
+    if (slot.index === action.slotIndex) return { ...from, index: action.slotIndex };
+    return slot;
+  });
+  return freezeState(slots, state.retiredSessions);
 }
 
 export function createSessionState(): SessionState {
@@ -202,5 +224,6 @@ export function createSessionState(): SessionState {
 export function reduceSessionState(state: SessionState, action: SessionReducerAction): SessionState {
   if (action.kind === SESSION_REDUCER_ACTION.EVENT) return reduceEvent(state, action.event);
   if (action.kind === SESSION_REDUCER_ACTION.PANE_MISSING) return reducePaneMissing(state, action);
+  if (action.kind === SESSION_REDUCER_ACTION.MOVE_SESSION) return reduceMoveSession(state, action);
   return reducePhysicalKeyDown(state, action.slotIndex, action.sessionId, action.target, action.assignmentId);
 }

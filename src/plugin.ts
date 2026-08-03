@@ -1,6 +1,7 @@
 import streamDeck from "@elgato/streamdeck";
 
 import { SessionSlotAction } from "./actions/session-slot";
+import { sessionSlotController } from "./plugin/session-slot-controller";
 import {
   derivePluginRootFromBundledModuleUrl,
   registerPluginRuntimeProcessLifecycle,
@@ -99,6 +100,9 @@ export async function launchPlugin(): Promise<void> {
     return;
   }
   streamDeck.actions.registerAction(new SessionSlotAction());
+  streamDeck.ui.onDidAppear((event) => { void sessionSlotController.handlePropertyInspectorAppeared(event.action.id); });
+  streamDeck.ui.onDidDisappear(() => { sessionSlotController.handlePropertyInspectorDisappeared(); });
+  streamDeck.ui.onSendToPlugin((event) => { void sessionSlotController.handleSendToPlugin(event.action.id, event.payload); });
   const unregisterLifecycle = registerPluginRuntimeProcessLifecycle(runtime);
   try {
     await streamDeck.connect();

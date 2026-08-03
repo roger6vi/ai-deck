@@ -221,4 +221,42 @@ describe("session status reducer", () => {
     expect(first).toEqual(second);
     expect(deriveSlotColor(first.slots[0], 123 + FIVE_MINUTES)).toBe(SESSION_SLOT_COLOR.AMBER);
   });
+
+  it("moves a session to an empty slot, preserving its assignment identity", () => {
+    const state = apply(createSessionState(), event({ sessionId: SESSION_IDS[0], tmuxPaneId: "%1" }));
+    const assignmentId = state.slots[0]?.assignmentId;
+
+    const moved = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.MOVE_SESSION, sessionId: SESSION_IDS[0], slotIndex: 3 });
+
+    expect(moved).not.toBe(state);
+    expect(moved.slots[0]?.sessionId).toBeUndefined();
+    expect(moved.slots[3]?.sessionId).toBe(SESSION_IDS[0]);
+    expect(moved.slots[3]?.assignmentId).toBe(assignmentId);
+    expect(moved.slots[3]?.target?.tmuxPaneId).toBe("%1");
+    expect(moved.slots[3]?.index).toBe(3);
+  });
+
+  it("swaps two assigned sessions when the target slot is occupied", () => {
+    let state = apply(createSessionState(), event({ eventNumber: 1, sessionId: SESSION_IDS[0], tmuxPaneId: "%1" }));
+    state = apply(state, event({ eventNumber: 2, sessionId: SESSION_IDS[1], tmuxPaneId: "%2" }));
+
+    const moved = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.MOVE_SESSION, sessionId: SESSION_IDS[0], slotIndex: 1 });
+
+    expect(moved.slots[0]?.sessionId).toBe(SESSION_IDS[1]);
+    expect(moved.slots[0]?.target?.tmuxPaneId).toBe("%2");
+    expect(moved.slots[1]?.sessionId).toBe(SESSION_IDS[0]);
+    expect(moved.slots[1]?.target?.tmuxPaneId).toBe("%1");
+    expect(moved.slots[0]?.index).toBe(0);
+    expect(moved.slots[1]?.index).toBe(1);
+  });
+
+  it("treats unknown sessions, the current slot, and invalid slot indexes as no-ops", () => {
+    const state = apply(createSessionState(), event({ sessionId: SESSION_IDS[0] }));
+
+    expect(reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.MOVE_SESSION, sessionId: SESSION_IDS[5], slotIndex: 2 })).toBe(state);
+    expect(reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.MOVE_SESSION, sessionId: SESSION_IDS[0], slotIndex: 0 })).toBe(state);
+    for (const invalidIndex of [-1, SLOT_COUNT, 0.5, Number.NaN]) {
+      expect(reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.MOVE_SESSION, sessionId: SESSION_IDS[0], slotIndex: invalidIndex })).toBe(state);
+    }
+  });
 });

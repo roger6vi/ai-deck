@@ -20,6 +20,7 @@ const PACKAGE_FILES = [
   "bin/plugin.js",
   "bin/adapter-emit.js",
   "bin/opencode-plugin.js",
+  "ui/session-slot.html",
   "assets/action.png",
   "assets/action@2x.png",
   "assets/key.png",

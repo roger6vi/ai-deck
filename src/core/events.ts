@@ -49,7 +49,7 @@ export type ProhibitedContentField =
 
 const INVALID_EVENT_MESSAGE = "Invalid local agent status event.";
 // Accept lowercase RFC 4122 version 4 UUIDs only; adapters normalize or hash native IDs.
-const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+export const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const TMUX_IDENTIFIER_QUANTIFIER = `{1,${LOCAL_AGENT_EVENT_LIMITS.MAX_TMUX_IDENTIFIER_DIGITS}}`;
 const TMUX_SESSION_PATTERN = new RegExp(`^\\$\\d${TMUX_IDENTIFIER_QUANTIFIER}$`);
 const TMUX_WINDOW_PATTERN = new RegExp(`^@\\d${TMUX_IDENTIFIER_QUANTIFIER}$`);

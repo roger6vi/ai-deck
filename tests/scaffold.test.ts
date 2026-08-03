@@ -24,6 +24,11 @@ vi.mock("@elgato/streamdeck", () => ({
     actions: { registerAction: streamDeckMock.registerAction },
     connect: streamDeckMock.connect,
     logger: { error: streamDeckMock.loggerError },
+    ui: {
+      onDidAppear: vi.fn(),
+      onDidDisappear: vi.fn(),
+      onSendToPlugin: vi.fn(),
+    },
   },
 }));
 

@@ -9,6 +9,7 @@ import {
   type SessionState,
 } from "../core/reducer";
 import { SESSION_SLOT_COLOR, SESSION_SLOT_SVG_PAINT, type SessionSlotColor } from "../core/colors";
+import { UUID_V4_PATTERN } from "../core/events";
 import { SESSION_STATUS, type LocalAgentStatusEvent } from "../core/types";
 import {
   NAVIGATION_OUTCOME,
@@ -40,6 +41,23 @@ export const SESSION_SLOT_RENDER_RETRY_DELAY_MS = 50;
 export const SESSION_SLOT_RENDER_ERROR = "Session slot render failed.";
 export const SESSION_SLOT_NAVIGATION_ERROR = "Session slot navigation unavailable.";
 export const SESSION_SLOT_PERSISTENCE_ERROR = "Session slot state subscriber failed.";
+export const SESSION_LIST_PAYLOAD_TYPE = "sessions";
+export const SET_SLOT_SESSION_EVENT = "set-slot-session";
+
+export interface SessionSlotListEntry {
+  readonly sessionId: string;
+  readonly slotIndex: number;
+  readonly source: string;
+  readonly lifecycle: string;
+  readonly title: string;
+}
+
+function parseSetSlotSessionPayload(payload: unknown): string | undefined {
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return undefined;
+  const record = payload as Record<string, unknown>;
+  if (record.type !== SET_SLOT_SESSION_EVENT || typeof record.sessionId !== "string") return undefined;
+  return UUID_V4_PATTERN.test(record.sessionId) ? record.sessionId : undefined;
+}
 
 export type SessionStateSubscriber = (state: SessionState) => void | Promise<void>;
 
@@ -56,12 +74,17 @@ export interface SessionSlotLogger {
   error(message: string): void;
 }
 
+export interface SessionSlotInspector {
+  sendToPropertyInspector(payload: unknown): Promise<void>;
+}
+
 export interface SessionSlotControllerOptions {
   readonly clock: SessionSlotClock;
   readonly scheduler: SessionSlotScheduler;
   readonly logger: SessionSlotLogger;
   readonly navigator?: AssignedTargetNavigator;
   readonly windowNameResolver?: SessionWindowNameResolver;
+  readonly inspector?: SessionSlotInspector;
 }
 
 const productionControllerOptions: SessionSlotControllerOptions = {
@@ -75,6 +98,9 @@ const productionControllerOptions: SessionSlotControllerOptions = {
   },
   navigator: ghosttyTmuxNavigator,
   windowNameResolver: createTmuxWindowNameResolver(),
+  inspector: {
+    sendToPropertyInspector: (payload) => streamDeck.ui.sendToPropertyInspector(payload as Parameters<typeof streamDeck.ui.sendToPropertyInspector>[0]),
+  },
 };
 
 interface VisibleSessionSlot {
@@ -110,6 +136,7 @@ export class SessionSlotController {
   #visibleActions = new Map<string, VisibleSessionSlot>();
   #stateSubscriber: SessionStateSubscriber | undefined = undefined;
   #windowNames = new Map<string, string | undefined>();
+  #propertyInspectorActionId: string | undefined = undefined;
 
   constructor(private readonly options: SessionSlotControllerOptions = productionControllerOptions) {}
 
@@ -166,6 +193,27 @@ export class SessionSlotController {
     this.#state = reduceSessionState(this.#state, { kind: SESSION_REDUCER_ACTION.EVENT, event });
     await this.#resolveWindowNames(this.#state);
     await this.refresh(now);
+    this.#notifyStateChanged(prevState);
+  }
+
+  async handlePropertyInspectorAppeared(actionId: string): Promise<void> {
+    this.#propertyInspectorActionId = actionId;
+    await this.#pushSessionList();
+  }
+
+  handlePropertyInspectorDisappeared(): void {
+    this.#propertyInspectorActionId = undefined;
+  }
+
+  async handleSendToPlugin(actionId: string, payload: unknown): Promise<void> {
+    const sessionId = parseSetSlotSessionPayload(payload);
+    if (sessionId === undefined) return;
+    const visible = this.#visibleActions.get(actionId);
+    if (visible === undefined) return;
+    const prevState = this.#state;
+    this.#state = reduceSessionState(this.#state, { kind: SESSION_REDUCER_ACTION.MOVE_SESSION, sessionId, slotIndex: visible.slotIndex });
+    if (this.#state === prevState) return;
+    await this.refresh(this.options.clock.now());
     this.#notifyStateChanged(prevState);
   }
 
@@ -302,12 +350,34 @@ export class SessionSlotController {
 
   #notifyStateChanged(prevState: SessionState): void {
     if (this.#state === prevState) return;
+    void this.#pushSessionList();
     const subscriber = this.#stateSubscriber;
     if (subscriber === undefined) return;
     const snapshot = this.#state;
     Promise.resolve()
       .then(() => subscriber(snapshot))
       .catch(() => this.#logPersistenceFailure());
+  }
+
+  #sessionListPayload(): { readonly type: typeof SESSION_LIST_PAYLOAD_TYPE; readonly sessions: readonly SessionSlotListEntry[] } {
+    const titles = resolveSlotTitles(this.#state, (paneId) => this.#windowNames.get(paneId));
+    return {
+      type: SESSION_LIST_PAYLOAD_TYPE,
+      sessions: this.#state.slots.flatMap((slot, index) => {
+        if (slot.sessionId === undefined || slot.lifecycle === undefined || slot.source === undefined) return [];
+        return [{ sessionId: slot.sessionId, slotIndex: index, source: slot.source, lifecycle: slot.lifecycle, title: titles[index] ?? slot.source }];
+      }),
+    };
+  }
+
+  async #pushSessionList(): Promise<void> {
+    const inspector = this.options.inspector;
+    if (inspector === undefined || this.#propertyInspectorActionId === undefined) return;
+    try {
+      await inspector.sendToPropertyInspector(this.#sessionListPayload());
+    } catch {
+      // The inspector may have closed mid-push; the next appearance re-sends the list.
+    }
   }
 
   async #renderVisible(
