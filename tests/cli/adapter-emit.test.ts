@@ -1,3 +1,8 @@
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+
 import { describe, expect, it, vi } from "vitest";
 
 import { ENDPOINT_CLIENT_OUTCOME, type EndpointClient } from "../../src/adapters/endpoint-client";
@@ -198,6 +203,20 @@ describe("isDirectCliInvocation", () => {
 
   it("returns false when argv[1] is undefined", () => {
     expect(isDirectCliInvocation(moduleUrl, undefined)).toBe(false);
+  });
+
+  it("recognises an invocation through a symlinked plugin directory", () => {
+    const directory = mkdtempSync(join(tmpdir(), "ai-deck-entrypoint-"));
+    try {
+      const bundled = join(directory, "adapter-emit.js");
+      const installed = join(directory, "installed-adapter-emit.js");
+      writeFileSync(bundled, "// bundled cli\n");
+      symlinkSync(bundled, installed);
+
+      expect(isDirectCliInvocation(pathToFileURL(bundled).href, installed)).toBe(true);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
 
