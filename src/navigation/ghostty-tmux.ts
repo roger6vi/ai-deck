@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import type { LocalAgentTargetMetadata } from "../core/types";
 export const NAVIGATION_OUTCOME = { NAVIGATED: "navigated", AMBIGUOUS: "ambiguous", MISSING: "missing", UNAVAILABLE: "unavailable" } as const;
 export const NAVIGATION_PROCESS_LIMITS = { TIMEOUT_MS: 200, MAX_OUTPUT_BYTES: 16 * 1024 } as const;
@@ -13,7 +15,28 @@ export interface NavigationLauncher { launch(command: string, args: readonly str
 export interface NavigationTimer { schedule(callback: () => void, delayMs: number): unknown; cancel(handle: unknown): void; }
 export interface AssignedTargetNavigator { navigate(target: LocalAgentTargetMetadata): Promise<NavigationOutcome>; }
 export interface GhosttyTmuxNavigatorOptions { readonly process: NavigationProcess; }
-const productionLauncher: NavigationLauncher = { launch(command, args, maxOutputBytes) {
+/**
+ * The Stream Deck app launches the plugin with the macOS GUI PATH
+ * (`/usr/bin:/bin:/usr/sbin:/sbin`), which has no Homebrew in it. Resolving
+ * binaries explicitly is what keeps `tmux` reachable from the plugin process.
+ */
+export const COMMAND_SEARCH_PATHS: readonly string[] = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"];
+
+export interface CommandPathDependencies { readonly exists: (path: string) => boolean; readonly env: NodeJS.ProcessEnv; }
+
+export function resolveCommandPath(command: string, dependencies: CommandPathDependencies = { exists: existsSync, env: process.env }): string {
+  if (command.includes("/")) return command;
+  const override = dependencies.env[`AI_DECK_${command.toUpperCase()}`];
+  if (override !== undefined && override.length > 0 && dependencies.exists(override)) return override;
+  for (const directory of COMMAND_SEARCH_PATHS) {
+    const candidate = join(directory, command);
+    if (dependencies.exists(candidate)) return candidate;
+  }
+  return command;
+}
+
+const productionLauncher: NavigationLauncher = { launch(rawCommand, args, maxOutputBytes) {
+  const command = resolveCommandPath(rawCommand);
   let child: ReturnType<typeof execFile>; let resolve: (result: NavigationProcessResult) => void = () => undefined; let reject: () => void = () => undefined;
   const result = new Promise<NavigationProcessResult>((next, fail) => { resolve = next; reject = () => fail(new Error("Navigation process unavailable.")); });
   child = execFile(command, args, { encoding: "utf8", maxBuffer: maxOutputBytes, shell: false }, (error, stdout) => { if (error === null) resolve({ stdout }); else reject(); });
