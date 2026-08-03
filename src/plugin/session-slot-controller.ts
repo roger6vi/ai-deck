@@ -268,12 +268,12 @@ export class SessionSlotController {
     if (!this.#matchesCurrentAssignment(visible.slotIndex, sessionId, target, assignmentId)) return;
     const prevState = this.#state;
     if (outcome === NAVIGATION_OUTCOME.MISSING) {
+      // One lookup that failed to find the pane frees the key, but keeps the
+      // session: only the startup reconciliation, which enumerates every pane,
+      // knows enough to retire one.
       this.#state = reduceSessionState(this.#state, {
-        kind: SESSION_REDUCER_ACTION.PANE_MISSING,
+        kind: SESSION_REDUCER_ACTION.CLEAR_SLOT,
         slotIndex: visible.slotIndex,
-        sessionId,
-        target,
-        assignmentId,
       });
     } else {
       this.#state = reduceSessionState(this.#state, {

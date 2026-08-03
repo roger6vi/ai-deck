@@ -19,6 +19,12 @@ export interface TmuxPaneEnumeratorOptions {
 export function reconcileSessionState(state: SessionState, existingPaneIds: ReadonlySet<string> | undefined): SessionState {
   if (existingPaneIds === undefined) return state;
   let result = state;
+  // A complete enumeration is the only evidence strong enough to forget a
+  // session the user chose to keep off its key.
+  const survivors = state.unassignedSessions.filter((session) => session.target !== undefined && existingPaneIds.has(session.target.tmuxPaneId));
+  if (survivors.length !== state.unassignedSessions.length) {
+    result = reduceSessionState(result, { kind: SESSION_REDUCER_ACTION.RETAIN_UNASSIGNED, sessions: survivors });
+  }
   for (const slot of state.slots) {
     if (slot.target === undefined || slot.sessionId === undefined || slot.assignmentId === undefined) continue;
     if (existingPaneIds.has(slot.target.tmuxPaneId)) continue;

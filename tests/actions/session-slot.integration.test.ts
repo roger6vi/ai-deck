@@ -263,6 +263,10 @@ describe("session slot Stream Deck integration", () => {
     await action.onKeyDown({ action: first as unknown as KeyAction } as KeyDownEvent);
     expect(controller.state.slots[0]?.sessionId).toBeUndefined();
     expect(imageFor(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.GRAY));
+    // One failed lookup frees the key; it never destroys the session, which a
+    // single 200ms tmux query is far too thin a basis for.
+    expect(controller.state.unassignedSessions.map((session) => session.sessionId)).toEqual([SESSION_IDS[0]]);
+    expect(controller.state.retiredSessions).toHaveLength(0);
     const ambiguousController = controllerWith({ navigate: vi.fn().mockResolvedValue(NAVIGATION_OUTCOME.AMBIGUOUS) }); const ambiguousAction = new SessionSlotActionBase(ambiguousController, () => 2); const ambiguousKey = key("ambiguous", 0);
     await ambiguousAction.onWillAppear(appear(ambiguousKey));
     await ambiguousController.handleStatusEvent(status({ tmuxPaneId: "%2" }), 1);

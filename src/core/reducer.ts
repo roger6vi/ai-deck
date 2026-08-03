@@ -8,6 +8,7 @@ export const SESSION_REDUCER_ACTION = {
   PANE_MISSING: "pane-missing",
   MOVE_SESSION: "move-session",
   CLEAR_SLOT: "clear-slot",
+  RETAIN_UNASSIGNED: "retain-unassigned",
 } as const;
 
 export const SESSION_REDUCER_LIMITS = {
@@ -82,7 +83,13 @@ export interface ClearSlotAction {
   readonly slotIndex: number;
 }
 
-export type SessionReducerAction = SessionEventAction | PhysicalKeyDownAction | PaneMissingAction | MoveSessionAction | ClearSlotAction;
+/** Narrows the unassigned set to the sessions a full pane enumeration proved alive. */
+export interface RetainUnassignedAction {
+  readonly kind: typeof SESSION_REDUCER_ACTION.RETAIN_UNASSIGNED;
+  readonly sessions: readonly UnassignedSession[];
+}
+
+export type SessionReducerAction = SessionEventAction | PhysicalKeyDownAction | PaneMissingAction | MoveSessionAction | ClearSlotAction | RetainUnassignedAction;
 
 function copyTarget(target: LocalAgentTargetMetadata): LocalAgentTargetMetadata {
   const copied = {
@@ -298,5 +305,8 @@ export function reduceSessionState(state: SessionState, action: SessionReducerAc
   if (action.kind === SESSION_REDUCER_ACTION.PANE_MISSING) return reducePaneMissing(state, action);
   if (action.kind === SESSION_REDUCER_ACTION.MOVE_SESSION) return reduceMoveSession(state, action);
   if (action.kind === SESSION_REDUCER_ACTION.CLEAR_SLOT) return reduceClearSlot(state, action);
+  if (action.kind === SESSION_REDUCER_ACTION.RETAIN_UNASSIGNED) {
+    return freezeState(state.slots, state.retiredSessions, action.sessions);
+  }
   return reducePhysicalKeyDown(state, action.slotIndex, action.sessionId, action.target, action.assignmentId);
 }
