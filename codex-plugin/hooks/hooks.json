@@ -39,7 +39,7 @@
           {
             "type": "command",
             "command": "node \"${PLUGIN_ROOT}/hooks/codex-hook.mjs\" --lifecycle pane-disappeared || true",
-            "timeout": 5
+            "timeout": 3
           }
         ]
       }

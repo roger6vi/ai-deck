@@ -45,6 +45,12 @@ describe("Codex plugin packaging", () => {
     expect(permission[0]?.command).toContain("--lifecycle completed");
   });
 
+  it("keeps the SessionEnd timeout inside the cap Codex clamps it to", () => {
+    const sessionEnd = (hooks.hooks.SessionEnd ?? []).flatMap((entry: any) => entry.hooks ?? []);
+    expect(sessionEnd).toHaveLength(1);
+    expect(sessionEnd[0]?.timeout).toBeLessThanOrEqual(3);
+  });
+
   it("locates the hook through the plugin root so it stays portable across machines", () => {
     for (const { command } of hookEntries()) {
       expect(command).toContain("${PLUGIN_ROOT}/hooks/codex-hook.mjs");
