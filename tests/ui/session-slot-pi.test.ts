@@ -18,6 +18,12 @@ describe("session slot property inspector page", () => {
     expect(html).toContain("propertyInspectorUUID");
   });
 
+  it("asks for the session list as soon as it registers, instead of trusting the plugin to win the race", async () => {
+    const html = await readFile(PI_PATH, "utf8");
+    const onopen = html.slice(html.indexOf("socket.onopen"), html.indexOf("socket.onmessage"));
+    expect(onopen).toContain('"request-sessions"');
+  });
+
   it("renders sessions payloads and sends set-slot-session selections", async () => {
     const html = await readFile(PI_PATH, "utf8");
     expect(html).toContain('"sendToPropertyInspector"');

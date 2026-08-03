@@ -95,6 +95,30 @@ describe("session slot property inspector", () => {
     expect(sessions[0]).toMatchObject({ sessionId: SESSION_ID, slotIndex: 0, source: "opencode", lifecycle: "started" });
   });
 
+  it("answers a session list request, so a page that connected after the push still fills its dropdown", async () => {
+    const { controller, inspector } = fixture();
+    const first = key("first", 0);
+    await controller.registerVisibleAction(appear(first));
+    await controller.handleStatusEvent(status(), 1);
+
+    await controller.handleSendToPlugin(first.id, { type: "request-sessions" });
+
+    const sessions = lastSessions(inspector);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({ sessionId: SESSION_ID, slotIndex: 0 });
+  });
+
+  it("ignores an unknown inspector payload without answering", async () => {
+    const { controller, inspector } = fixture();
+    const first = key("first", 0);
+    await controller.registerVisibleAction(appear(first));
+    await controller.handleStatusEvent(status(), 1);
+
+    await controller.handleSendToPlugin(first.id, { type: "who-knows" });
+
+    expect(inspector.sent).toHaveLength(0);
+  });
+
   it("moves a session to the key slot on set-slot-session, swapping occupants and notifying", async () => {
     const { controller, inspector } = fixture();
     const first = key("first", 0);

@@ -56,7 +56,16 @@ window.connectElgatoStreamDeckSocket = function (port, propertyInspectorUUID, re
   actionInfo = inActionInfo;
   inspectorUUID = propertyInspectorUUID;
   socket = new WebSocket("ws://127.0.0.1:" + port);
-  socket.onopen = () => socket.send(JSON.stringify({ event: registerEvent, uuid: propertyInspectorUUID }));
+  socket.onopen = () => {
+    socket.send(JSON.stringify({ event: registerEvent, uuid: propertyInspectorUUID }));
+    // The plugin pushes the list when the inspector appears, which can happen
+    // before this socket exists. Asking makes the dropdown independent of that.
+    socket.send(JSON.stringify({
+      event: "sendToPlugin",
+      context: propertyInspectorUUID,
+      payload: { type: "request-sessions" },
+    }));
+  };
   socket.onmessage = (message) => {
     let data;
     try { data = JSON.parse(message.data); } catch { return; }

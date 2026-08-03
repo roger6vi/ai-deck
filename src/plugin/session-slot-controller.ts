@@ -43,6 +43,7 @@ export const SESSION_SLOT_NAVIGATION_ERROR = "Session slot navigation unavailabl
 export const SESSION_SLOT_PERSISTENCE_ERROR = "Session slot state subscriber failed.";
 export const SESSION_LIST_PAYLOAD_TYPE = "sessions";
 export const SET_SLOT_SESSION_EVENT = "set-slot-session";
+export const REQUEST_SESSIONS_EVENT = "request-sessions";
 
 export interface SessionSlotListEntry {
   readonly sessionId: string;
@@ -50,6 +51,11 @@ export interface SessionSlotListEntry {
   readonly source: string;
   readonly lifecycle: string;
   readonly title: string;
+}
+
+function isRequestSessionsPayload(payload: unknown): boolean {
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return false;
+  return (payload as Record<string, unknown>).type === REQUEST_SESSIONS_EVENT;
 }
 
 function parseSetSlotSessionPayload(payload: unknown): string | undefined {
@@ -206,6 +212,13 @@ export class SessionSlotController {
   }
 
   async handleSendToPlugin(actionId: string, payload: unknown): Promise<void> {
+    if (isRequestSessionsPayload(payload)) {
+      // The push on appearance can outrun the page's own socket; answering a
+      // request lets a page that lost that race fill its dropdown anyway.
+      this.#propertyInspectorActionId = actionId;
+      await this.#pushSessionList();
+      return;
+    }
     const sessionId = parseSetSlotSessionPayload(payload);
     if (sessionId === undefined) return;
     const visible = this.#visibleActions.get(actionId);
