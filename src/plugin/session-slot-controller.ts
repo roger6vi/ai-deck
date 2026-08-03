@@ -174,6 +174,11 @@ export class SessionSlotController {
     for (const slot of state.slots) {
       if (slot.sessionId !== undefined && slot.target !== undefined) paneIds.add(slot.target.tmuxPaneId);
     }
+    // Unassigned sessions are offered in the inspector too, and without their
+    // window name every session of one tool reads identically there.
+    for (const session of state.unassignedSessions) {
+      if (session.target !== undefined) paneIds.add(session.target.tmuxPaneId);
+    }
     const entries = await Promise.all([...paneIds].map(async (paneId) => [paneId, await resolver.resolve(paneId)] as const));
     this.#windowNames = new Map(entries);
   }

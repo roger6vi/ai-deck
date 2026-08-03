@@ -8,6 +8,7 @@ import {
   type SessionSlotControllerOptions,
 } from "../../src/plugin/session-slot-controller";
 
+const WINDOW_NAME = "Claudio";
 const SESSION_ID = "123e4567-e89b-42d3-a456-426614174000";
 const SESSION_ID_B = "223e4567-e89b-42d3-a456-426614174000";
 
@@ -61,7 +62,7 @@ function fixture(): { readonly controller: SessionSlotController; readonly inspe
     clock: { now: () => 0 },
     scheduler: { schedule: () => undefined, cancel: () => undefined },
     logger: { error: vi.fn() },
-    windowNameResolver: { resolve: async () => undefined },
+    windowNameResolver: { resolve: async () => WINDOW_NAME },
     inspector: stub.inspector,
   };
   return { controller: new SessionSlotController(options), inspector: stub };
@@ -106,6 +107,25 @@ describe("session slot property inspector", () => {
     const sessions = lastSessions(inspector);
     expect(sessions).toHaveLength(1);
     expect(sessions[0]).toMatchObject({ sessionId: SESSION_ID, slotIndex: 0 });
+  });
+
+  it("names an unassigned session by its window, so two from the same tool stay apart", async () => {
+    const { controller, inspector } = fixture();
+    const first = key("first", 0);
+    await controller.registerVisibleAction(appear(first));
+    await controller.handleStatusEvent(status(), 1);
+    await controller.handlePropertyInspectorAppeared(first.id);
+
+    await controller.handleSendToPlugin(first.id, { type: "clear-slot" });
+    // Any later event rebuilds the window-name cache; if that rebuild only
+    // walks the slots, the unassigned session loses its name.
+    await controller.handleStatusEvent(status(SESSION_STATUS.STARTED, 5, SESSION_ID_B), 5);
+    await controller.handleSendToPlugin(first.id, { type: "request-sessions" });
+
+    // Falling back to the tool name renders every unassigned Codex session as
+    // "codex · codex · started", leaving the user nothing to choose between.
+    const unassigned = lastSessions(inspector).find((session) => session.sessionId === SESSION_ID);
+    expect(unassigned?.title).toBe(WINDOW_NAME);
   });
 
   it("keeps a cleared session in the list so the user can put it back on a key", async () => {
