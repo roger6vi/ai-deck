@@ -1,7 +1,21 @@
 import streamDeck from "@elgato/streamdeck";
 
 import { SessionSlotAction } from "./actions/session-slot";
-import { registerPluginRuntimeProcessLifecycle, startPluginRuntime } from "./plugin/runtime";
+import { sessionSlotController } from "./plugin/session-slot-controller";
+import {
+  derivePluginRootFromBundledModuleUrl,
+  registerPluginRuntimeProcessLifecycle,
+  startPluginRuntime,
+  type PluginRuntimePersistence,
+} from "./plugin/runtime";
+import {
+  createSessionStateStore,
+  productionSessionStateStoreDependencies,
+} from "./persistence/session-state-store";
+import {
+  createTmuxPaneEnumerator,
+  reconcileSessionState,
+} from "./persistence/session-state-reconciler";
 
 const LAUNCH_PARAMETERS = {
   PORT: "-port",
@@ -51,21 +65,44 @@ function reportDiagnostic(message: string): void {
   try { streamDeck.logger.error(message); } catch {}
 }
 
+function buildProductionPersistence(pluginRoot: string): PluginRuntimePersistence | undefined {
+  const getUid = typeof process.getuid === "function" ? process.getuid.bind(process) : undefined;
+  if (getUid === undefined) return undefined;
+  const store = createSessionStateStore({
+    pluginRoot,
+    fs: productionSessionStateStoreDependencies.fs,
+    ownUid: getUid(),
+  });
+  const enumerator = createTmuxPaneEnumerator();
+  return {
+    load: () => store.load(),
+    save: (state) => store.save(state),
+    reconcile: async (state) => reconcileSessionState(state, await enumerator.enumerate()),
+  };
+}
+
 export async function launchPlugin(): Promise<void> {
   if (!hasValidLaunchParameters(process.argv)) {
     console.error(LAUNCH_PARAMETER_ERROR);
     process.exitCode = 1;
     return;
   }
+  const pluginRoot = derivePluginRootFromBundledModuleUrl(import.meta.url);
+  const persistence = buildProductionPersistence(pluginRoot);
   let runtime;
   try {
-    runtime = await startPluginRuntime();
+    runtime = persistence === undefined
+      ? await startPluginRuntime({ pluginRoot })
+      : await startPluginRuntime({ pluginRoot, persistence });
   } catch {
     process.exitCode = 1;
     reportDiagnostic(PLUGIN_RUNTIME_STARTUP_ERROR);
     return;
   }
   streamDeck.actions.registerAction(new SessionSlotAction());
+  streamDeck.ui.onDidAppear((event) => { void sessionSlotController.handlePropertyInspectorAppeared(event.action.id); });
+  streamDeck.ui.onDidDisappear(() => { sessionSlotController.handlePropertyInspectorDisappeared(); });
+  streamDeck.ui.onSendToPlugin((event) => { void sessionSlotController.handleSendToPlugin(event.action.id, event.payload); });
   const unregisterLifecycle = registerPluginRuntimeProcessLifecycle(runtime);
   try {
     await streamDeck.connect();

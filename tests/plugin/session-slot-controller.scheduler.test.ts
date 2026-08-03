@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { KeyAction, WillAppearEvent } from "@elgato/streamdeck";
 
-import { SESSION_COLOR_LIMITS, SESSION_SLOT_COLOR } from "../../src/core/colors";
+import { SESSION_SLOT_COLOR } from "../../src/core/colors";
 import { SESSION_STATUS, type LocalAgentStatusEvent, type SessionStatus } from "../../src/core/types";
 import {
   SESSION_SLOT_RENDER_ERROR,
@@ -128,7 +128,7 @@ describe("session slot production render scheduling", () => {
     expect(testFixture.activeTimerCount()).toBe(1);
   });
 
-  it("uses the current clock on retry, renders the current color, and resumes advisory scheduling", async () => {
+  it("uses the current clock on retry, renders the current color, and schedules no further work", async () => {
     const testFixture = fixture();
     const subject = controller(testFixture);
     const action = key("first");
@@ -142,8 +142,7 @@ describe("session slot production render scheduling", () => {
     await settle();
 
     expect(lastImage(action)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.AMBER));
-    expect(testFixture.activeTimerCount()).toBe(1);
-    expect(testFixture.timers.at(-1)?.deadline).toBe(1 + SESSION_COLOR_LIMITS.RUNNING_ADVISORY_MS);
+    expect(testFixture.activeTimerCount()).toBe(0);
   });
 
   it("logs a generic second failure and stops the retry without an unhandled rejection", async () => {
@@ -235,7 +234,7 @@ describe("session slot production render scheduling", () => {
 
     expect(first.setImage).toHaveBeenCalledTimes(2);
     expect(second.setImage).toHaveBeenCalledTimes(2);
-    expect(testFixture.activeTimerCount()).toBe(2);
+    expect(testFixture.activeTimerCount()).toBe(0);
   });
 
   it("never passes render content to the logger and contains a throwing logger", async () => {
@@ -253,38 +252,35 @@ describe("session slot production render scheduling", () => {
     expect(testFixture.activeTimerCount()).toBe(1);
   });
 
-  it("schedules amber once, remains amber before the deadline, and renders red at the exact boundary", async () => {
+  it("renders running slots amber once, schedules no timers, and keeps amber at any later time", async () => {
     const testFixture = fixture();
     const subject = controller(testFixture);
     const action = key("first");
     await subject.registerVisibleAction(appear(action));
     await subject.handleStatusEvent(status(), 1);
 
-    expect(testFixture.activeTimerCount()).toBe(1);
-    testFixture.setNow(1 + SESSION_COLOR_LIMITS.RUNNING_ADVISORY_MS - 1);
+    expect(lastImage(action)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.AMBER));
+    expect(testFixture.activeTimerCount()).toBe(0);
+
+    testFixture.setNow(Number.MAX_SAFE_INTEGER);
     testFixture.runDue();
     await settle();
     expect(lastImage(action)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.AMBER));
-
-    testFixture.setNow(1 + SESSION_COLOR_LIMITS.RUNNING_ADVISORY_MS);
-    testFixture.runDue();
-    await settle();
-    expect(lastImage(action)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.RED));
     expect(testFixture.activeTimerCount()).toBe(0);
 
     const lateFixture = fixture();
     const lateSubject = controller(lateFixture);
     const lateAction = key("late");
     await lateSubject.registerVisibleAction(appear(lateAction));
-    lateFixture.setNow(1 + SESSION_COLOR_LIMITS.RUNNING_ADVISORY_MS + 1);
-    await lateSubject.handleStatusEvent(status(), lateFixture.clock.now());
-    lateFixture.runDue();
-    await settle();
-    expect(lastImage(lateAction)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.RED));
+    lateFixture.setNow(1);
+    await lateSubject.handleStatusEvent(status(), 1);
+    lateFixture.setNow(Number.MAX_SAFE_INTEGER);
+    await lateSubject.refresh(lateFixture.clock.now());
+    expect(lastImage(lateAction)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.AMBER));
     expect(lateFixture.activeTimerCount()).toBe(0);
   });
 
-  it("reschedules independent slots and cancels advisory work for lifecycle, pane, context, and disposal changes", async () => {
+  it("never schedules timers across lifecycle, pane, context, and disposal changes", async () => {
     const testFixture = fixture();
     const subject = controller(testFixture);
     const first = key("first", 0);
@@ -293,48 +289,35 @@ describe("session slot production render scheduling", () => {
     await subject.registerVisibleAction(appear(second));
     testFixture.setNow(1);
     await subject.handleStatusEvent(status(), 1);
-    const staleAdvisory = testFixture.timers[0];
-    if (staleAdvisory === undefined) throw new Error("Expected a queued advisory.");
     testFixture.setNow(2);
     await subject.handleStatusEvent(status(SESSION_STATUS.STARTED, 2, "223e4567-e89b-42d3-a456-426614174000"), 2);
-    expect(testFixture.activeTimerCount()).toBe(2);
+    expect(testFixture.activeTimerCount()).toBe(0);
 
     testFixture.setNow(3);
     await subject.handleStatusEvent(status(SESSION_STATUS.RUNNING, 3), 3);
-    expect(testFixture.activeTimerCount()).toBe(2);
-    expect(testFixture.timers.filter((timer) => timer.cancelled)).toHaveLength(3);
-    staleAdvisory.callback();
-    await settle();
-    expect(testFixture.activeTimerCount()).toBe(2);
-    testFixture.setNow(1 + SESSION_COLOR_LIMITS.RUNNING_ADVISORY_MS - 1);
-    testFixture.runDue();
-    await settle();
     expect(lastImage(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.AMBER));
-    testFixture.setNow(1 + SESSION_COLOR_LIMITS.RUNNING_ADVISORY_MS);
-    testFixture.runDue();
-    await settle();
-    expect(lastImage(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.RED));
-    const afterBoundary = 1 + SESSION_COLOR_LIMITS.RUNNING_ADVISORY_MS;
-    testFixture.setNow(afterBoundary);
-    await subject.handleStatusEvent(status(SESSION_STATUS.COMPLETED, afterBoundary), afterBoundary);
-    expect(testFixture.activeTimerCount()).toBe(1);
-    testFixture.setNow(afterBoundary + 1);
-    await subject.handleStatusEvent(status(SESSION_STATUS.PANE_DISAPPEARED, afterBoundary + 1, "223e4567-e89b-42d3-a456-426614174000"), afterBoundary + 1);
+    const later = 1 + 10 * 60 * 1000;
+    testFixture.setNow(later);
+    await subject.handleStatusEvent(status(SESSION_STATUS.COMPLETED, later), later);
+    expect(lastImage(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.BLUE));
+    testFixture.setNow(later + 1);
+    await subject.handleStatusEvent(status(SESSION_STATUS.PANE_DISAPPEARED, later + 1, "223e4567-e89b-42d3-a456-426614174000"), later + 1);
     expect(testFixture.activeTimerCount()).toBe(0);
 
-    testFixture.setNow(afterBoundary + 2);
-    await subject.handleStatusEvent(status(SESSION_STATUS.STARTED, afterBoundary + 2), afterBoundary + 2);
-    testFixture.setNow(afterBoundary + 3);
-    await subject.handleStatusEvent(status(SESSION_STATUS.ERROR, afterBoundary + 3), afterBoundary + 3);
+    testFixture.setNow(later + 2);
+    await subject.handleStatusEvent(status(SESSION_STATUS.STARTED, later + 2), later + 2);
+    testFixture.setNow(later + 3);
+    await subject.handleStatusEvent(status(SESSION_STATUS.ERROR, later + 3), later + 3);
+    expect(lastImage(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.RED));
     expect(testFixture.activeTimerCount()).toBe(0);
-    testFixture.setNow(afterBoundary + 4);
-    await subject.handleStatusEvent(status(SESSION_STATUS.STARTED, afterBoundary + 4), afterBoundary + 4);
-    testFixture.setNow(afterBoundary + 5);
-    await subject.handleStatusEvent(status(SESSION_STATUS.COMPLETED, afterBoundary + 5), afterBoundary + 5);
-    await subject.handlePhysicalKeyDown(first.id, afterBoundary + 6);
+    testFixture.setNow(later + 4);
+    await subject.handleStatusEvent(status(SESSION_STATUS.STARTED, later + 4), later + 4);
+    testFixture.setNow(later + 5);
+    await subject.handleStatusEvent(status(SESSION_STATUS.COMPLETED, later + 5), later + 5);
+    await subject.handlePhysicalKeyDown(first.id, later + 6);
     expect(testFixture.activeTimerCount()).toBe(0);
-    testFixture.setNow(afterBoundary + 7);
-    await subject.handleStatusEvent(status(SESSION_STATUS.STARTED, afterBoundary + 7), afterBoundary + 7);
+    testFixture.setNow(later + 7);
+    await subject.handleStatusEvent(status(SESSION_STATUS.STARTED, later + 7), later + 7);
     subject.unregisterVisibleAction(first.id);
     expect(testFixture.activeTimerCount()).toBe(0);
     await subject.registerVisibleAction(appear(first));
@@ -343,7 +326,7 @@ describe("session slot production render scheduling", () => {
     expect(subject.visibleContextCount).toBe(0);
   });
 
-  it("does not let an older deferred render schedule an advisory after a newer pane refresh", async () => {
+  it("does not let an older deferred render schedule any work after a newer pane refresh", async () => {
     const testFixture = fixture();
     const subject = controller(testFixture);
     const action = key("first");
@@ -356,70 +339,6 @@ describe("session slot production render scheduling", () => {
     pendingAmber.resolve();
     await olderRefresh;
 
-    expect(testFixture.activeTimerCount()).toBe(0);
-  });
-
-  it("queues one immediate refresh when an amber render crosses its advisory deadline", async () => {
-    const testFixture = fixture();
-    const subject = controller(testFixture);
-    const action = key("first");
-    await subject.registerVisibleAction(appear(action));
-    const pendingAmber = deferredRender();
-    action.setImage.mockImplementationOnce(() => pendingAmber.promise);
-
-    testFixture.setNow(1);
-    const refresh = subject.handleStatusEvent(status(), 1);
-    testFixture.setNow(1 + SESSION_COLOR_LIMITS.RUNNING_ADVISORY_MS + 1);
-    pendingAmber.resolve();
-    await refresh;
-
-    expect(testFixture.activeTimerCount()).toBe(1);
-    testFixture.runDue();
-    await settle();
-    expect(lastImage(action)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.RED));
-    expect(testFixture.activeTimerCount()).toBe(0);
-  });
-
-  it("stops after the retry of a failed immediate red render also fails", async () => {
-    const testFixture = fixture();
-    const subject = controller(testFixture);
-    const action = key("first");
-    await subject.registerVisibleAction(appear(action));
-    const pendingAmber = deferredRender();
-    action.setImage
-      .mockImplementationOnce(() => pendingAmber.promise)
-      .mockRejectedValueOnce(new Error("offline"))
-      .mockRejectedValueOnce(new Error("offline"));
-
-    testFixture.setNow(1);
-    const refresh = subject.handleStatusEvent(status(), 1);
-    testFixture.setNow(1 + SESSION_COLOR_LIMITS.RUNNING_ADVISORY_MS + 1);
-    pendingAmber.resolve();
-    await refresh;
-    testFixture.runDue();
-    await settle();
-    testFixture.setNow(1 + SESSION_COLOR_LIMITS.RUNNING_ADVISORY_MS + 1 + SESSION_SLOT_RENDER_RETRY_DELAY_MS);
-    testFixture.runDue();
-    await settle();
-
-    expect(action.setImage).toHaveBeenCalledTimes(4);
-    expect(testFixture.activeTimerCount()).toBe(0);
-  });
-
-  it("replaces a duplicate context without retaining its obsolete advisory timer", async () => {
-    const testFixture = fixture();
-    const subject = controller(testFixture);
-    const action = key("first");
-    await subject.registerVisibleAction(appear(action));
-    await subject.handleStatusEvent(status(), 1);
-    const obsoleteTimer = testFixture.timers.at(-1);
-    if (obsoleteTimer === undefined) throw new Error("Expected an advisory timer.");
-
-    await subject.registerVisibleAction(appear(action));
-
-    expect(obsoleteTimer.cancelled).toBe(true);
-    expect(testFixture.activeTimerCount()).toBe(1);
-    subject.dispose();
     expect(testFixture.activeTimerCount()).toBe(0);
   });
 });

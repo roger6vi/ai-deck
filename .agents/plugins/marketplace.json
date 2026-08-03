@@ -1,0 +1,16 @@
+{
+  "name": "ai-deck",
+  "interface": {
+    "displayName": "AI Deck Session Status"
+  },
+  "plugins": [
+    {
+      "name": "ai-deck-codex",
+      "source": {
+        "source": "local",
+        "path": "./codex-plugin"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

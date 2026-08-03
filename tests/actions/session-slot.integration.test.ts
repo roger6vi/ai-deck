@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { KeyAction, KeyDownEvent, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
 
 import { SessionSlotActionBase } from "../../src/actions/session-slot-base";
-import { SESSION_COLOR_LIMITS, SESSION_SLOT_COLOR } from "../../src/core/colors";
+import { SESSION_SLOT_COLOR } from "../../src/core/colors";
 import { SESSION_REDUCER_LIMITS } from "../../src/core/reducer";
 import { SESSION_STATUS, type LocalAgentStatusEvent } from "../../src/core/types";
 import { NAVIGATION_OUTCOME, type AssignedTargetNavigator } from "../../src/navigation/ghostty-tmux";
@@ -25,6 +25,18 @@ const SESSION_IDS = [
 ] as const;
 
 const DISABLED_GRAY_PAINT = "#6B7280";
+
+function hermeticController(): SessionSlotController {
+  return new SessionSlotController({
+    clock: { now: Date.now },
+    scheduler: {
+      schedule: (callback, delayMs) => setTimeout(callback, delayMs),
+      cancel: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+    },
+    logger: { error: vi.fn() },
+    windowNameResolver: { resolve: async () => undefined },
+  });
+}
 
 interface MockKey {
   readonly id: string;
@@ -142,8 +154,8 @@ describe("session slot Stream Deck integration", () => {
     expect(controller.visibleContextCount).toBe(SESSION_REDUCER_LIMITS.SLOT_COUNT);
   });
 
-  it("renders only affected visible contexts for lifecycle and bounded advisory changes", async () => {
-    const controller = new SessionSlotController();
+  it("renders only affected visible contexts for lifecycle changes, keeping running amber and reserving red for errors", async () => {
+    const controller = hermeticController();
     const first = key("first", 0);
     const second = key("second", 1);
     await controller.registerVisibleAction(appear(first));
@@ -151,10 +163,8 @@ describe("session slot Stream Deck integration", () => {
 
     await controller.handleStatusEvent(status(), 1);
     expect(imageFor(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.AMBER));
-    await controller.refresh(1 + SESSION_COLOR_LIMITS.RUNNING_ADVISORY_MS - 1);
+    await controller.refresh(Number.MAX_SAFE_INTEGER);
     expect(imageFor(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.AMBER));
-    await controller.refresh(1 + SESSION_COLOR_LIMITS.RUNNING_ADVISORY_MS);
-    expect(imageFor(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.RED));
     await controller.handleStatusEvent(status({ eventId: "de305d54-75b4-431b-adb2-eb6b9e546002", lifecycle: SESSION_STATUS.ERROR, timestamp: 2 }), 2);
     expect(imageFor(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.RED));
     await controller.handleStatusEvent(status({ eventId: "de305d54-75b4-431b-adb2-eb6b9e546003", lifecycle: SESSION_STATUS.COMPLETED, timestamp: 3 }), 3);
@@ -185,7 +195,7 @@ describe("session slot Stream Deck integration", () => {
   });
 
   it("keeps contexts and sessions independent, releases only from pane-disappeared, and cleans up safely", async () => {
-    const controller = new SessionSlotController();
+    const controller = hermeticController();
     const action = new SessionSlotActionBase(controller, () => 3);
     const first = key("first", 0);
     const second = key("second", 1);
@@ -205,7 +215,7 @@ describe("session slot Stream Deck integration", () => {
   });
 
   it("uses explicit SVG paints in SDK-supported base64 images and contains rejected direct renders", async () => {
-    const controller = new SessionSlotController();
+    const controller = hermeticController();
     const rejected = key("rejected", 0);
     rejected.setImage.mockRejectedValueOnce(new Error("offline"));
 
@@ -232,7 +242,7 @@ describe("session slot Stream Deck integration", () => {
   });
 
   it("uses disabled gray while unassigned and amber for started sessions through a strict image host", async () => {
-    const controller = new SessionSlotController();
+    const controller = hermeticController();
     const action = key("contract-host", 0);
     action.setImage.mockImplementation(async (image) => { decodeSdkSvgImage(image ?? ""); });
 

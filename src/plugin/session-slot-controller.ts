@@ -8,7 +8,8 @@ import {
   SESSION_REDUCER_LIMITS,
   type SessionState,
 } from "../core/reducer";
-import { SESSION_COLOR_LIMITS, SESSION_SLOT_COLOR, SESSION_SLOT_SVG_PAINT, type SessionSlotColor } from "../core/colors";
+import { SESSION_SLOT_COLOR, SESSION_SLOT_SVG_PAINT, type SessionSlotColor } from "../core/colors";
+import { UUID_V4_PATTERN } from "../core/events";
 import { SESSION_STATUS, type LocalAgentStatusEvent } from "../core/types";
 import {
   NAVIGATION_OUTCOME,
@@ -16,6 +17,11 @@ import {
   type AssignedTargetNavigator,
   type NavigationOutcome,
 } from "../navigation/ghostty-tmux";
+import {
+  createTmuxWindowNameResolver,
+  resolveSlotTitles,
+  type SessionWindowNameResolver,
+} from "./session-slot-title";
 
 const SESSION_SLOT_IMAGE = {
   PREFIX: "data:image/svg+xml;base64,",
@@ -34,6 +40,33 @@ type SessionSlotRenderResult = (typeof SESSION_SLOT_RENDER_RESULT)[keyof typeof 
 export const SESSION_SLOT_RENDER_RETRY_DELAY_MS = 50;
 export const SESSION_SLOT_RENDER_ERROR = "Session slot render failed.";
 export const SESSION_SLOT_NAVIGATION_ERROR = "Session slot navigation unavailable.";
+export const SESSION_SLOT_PERSISTENCE_ERROR = "Session slot state subscriber failed.";
+export const SESSION_LIST_PAYLOAD_TYPE = "sessions";
+export const SET_SLOT_SESSION_EVENT = "set-slot-session";
+export const REQUEST_SESSIONS_EVENT = "request-sessions";
+export const CLEAR_SLOT_EVENT = "clear-slot";
+
+export interface SessionSlotListEntry {
+  readonly sessionId: string;
+  readonly slotIndex: number;
+  readonly source: string;
+  readonly lifecycle: string;
+  readonly title: string;
+}
+
+function isInspectorPayloadOfType(payload: unknown, type: string): boolean {
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return false;
+  return (payload as Record<string, unknown>).type === type;
+}
+
+function parseSetSlotSessionPayload(payload: unknown): string | undefined {
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return undefined;
+  const record = payload as Record<string, unknown>;
+  if (record.type !== SET_SLOT_SESSION_EVENT || typeof record.sessionId !== "string") return undefined;
+  return UUID_V4_PATTERN.test(record.sessionId) ? record.sessionId : undefined;
+}
+
+export type SessionStateSubscriber = (state: SessionState) => void | Promise<void>;
 
 export interface SessionSlotClock {
   now(): number;
@@ -48,11 +81,17 @@ export interface SessionSlotLogger {
   error(message: string): void;
 }
 
+export interface SessionSlotInspector {
+  sendToPropertyInspector(payload: unknown): Promise<void>;
+}
+
 export interface SessionSlotControllerOptions {
   readonly clock: SessionSlotClock;
   readonly scheduler: SessionSlotScheduler;
   readonly logger: SessionSlotLogger;
   readonly navigator?: AssignedTargetNavigator;
+  readonly windowNameResolver?: SessionWindowNameResolver;
+  readonly inspector?: SessionSlotInspector;
 }
 
 const productionControllerOptions: SessionSlotControllerOptions = {
@@ -65,16 +104,19 @@ const productionControllerOptions: SessionSlotControllerOptions = {
     error: (message) => streamDeck.logger.error(message),
   },
   navigator: ghosttyTmuxNavigator,
+  windowNameResolver: createTmuxWindowNameResolver(),
+  inspector: {
+    sendToPropertyInspector: (payload) => streamDeck.ui.sendToPropertyInspector(payload as Parameters<typeof streamDeck.ui.sendToPropertyInspector>[0]),
+  },
 };
 
 interface VisibleSessionSlot {
   readonly action: KeyAction;
   readonly slotIndex: number;
   renderGeneration: number;
-  advisoryGeneration: number;
   retryGeneration: number;
   renderedColor?: SessionSlotColor;
-  advisoryTimer?: unknown;
+  renderedTitle: string | undefined;
   retryTimer?: unknown;
 }
 
@@ -99,6 +141,9 @@ export function sessionSlotSvgDataUri(color: SessionSlotColor): string {
 export class SessionSlotController {
   #state = createSessionState();
   #visibleActions = new Map<string, VisibleSessionSlot>();
+  #stateSubscriber: SessionStateSubscriber | undefined = undefined;
+  #windowNames = new Map<string, string | undefined>();
+  #propertyInspectorActionId: string | undefined = undefined;
 
   constructor(private readonly options: SessionSlotControllerOptions = productionControllerOptions) {}
 
@@ -110,13 +155,35 @@ export class SessionSlotController {
     return this.#visibleActions.size;
   }
 
+  subscribeToStateChanges(subscriber: SessionStateSubscriber): () => void {
+    this.#stateSubscriber = subscriber;
+    return () => { if (this.#stateSubscriber === subscriber) this.#stateSubscriber = undefined; };
+  }
+
+  async hydrateState(state: SessionState): Promise<void> {
+    this.#state = state;
+    await this.#resolveWindowNames(state);
+    await this.refresh(this.options.clock.now());
+  }
+
+  async #resolveWindowNames(state: SessionState): Promise<void> {
+    const resolver = this.options.windowNameResolver;
+    if (resolver === undefined) return;
+    const paneIds = new Set<string>();
+    for (const slot of state.slots) {
+      if (slot.sessionId !== undefined && slot.target !== undefined) paneIds.add(slot.target.tmuxPaneId);
+    }
+    const entries = await Promise.all([...paneIds].map(async (paneId) => [paneId, await resolver.resolve(paneId)] as const));
+    this.#windowNames = new Map(entries);
+  }
+
   async registerVisibleAction(event: WillAppearEvent): Promise<void> {
     const slotIndex = slotIndexFor(event);
     if (slotIndex === undefined) return;
     const action = event.action as KeyAction;
     const priorVisible = this.#visibleActions.get(action.id);
     if (priorVisible !== undefined) this.#cancelVisibleWork(priorVisible);
-    const visible: VisibleSessionSlot = { action, slotIndex, renderGeneration: 0, advisoryGeneration: 0, retryGeneration: 0 };
+    const visible: VisibleSessionSlot = { action, slotIndex, renderGeneration: 0, retryGeneration: 0, renderedTitle: undefined };
     this.#visibleActions.set(action.id, visible);
     await this.#refreshVisible(visible, this.#state, true, this.options.clock.now());
   }
@@ -129,8 +196,48 @@ export class SessionSlotController {
   }
 
   async handleStatusEvent(event: LocalAgentStatusEvent, now: number): Promise<void> {
+    const prevState = this.#state;
     this.#state = reduceSessionState(this.#state, { kind: SESSION_REDUCER_ACTION.EVENT, event });
+    await this.#resolveWindowNames(this.#state);
     await this.refresh(now);
+    this.#notifyStateChanged(prevState);
+  }
+
+  async handlePropertyInspectorAppeared(actionId: string): Promise<void> {
+    this.#propertyInspectorActionId = actionId;
+    await this.#pushSessionList();
+  }
+
+  handlePropertyInspectorDisappeared(): void {
+    this.#propertyInspectorActionId = undefined;
+  }
+
+  async handleSendToPlugin(actionId: string, payload: unknown): Promise<void> {
+    if (isInspectorPayloadOfType(payload, REQUEST_SESSIONS_EVENT)) {
+      // The push on appearance can outrun the page's own socket; answering a
+      // request lets a page that lost that race fill its dropdown anyway.
+      this.#propertyInspectorActionId = actionId;
+      await this.#pushSessionList();
+      return;
+    }
+    const visible = this.#visibleActions.get(actionId);
+    if (visible === undefined) return;
+    const action = isInspectorPayloadOfType(payload, CLEAR_SLOT_EVENT)
+      ? { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: visible.slotIndex } as const
+      : this.#moveActionFor(payload, visible.slotIndex);
+    if (action === undefined) return;
+    const prevState = this.#state;
+    this.#state = reduceSessionState(this.#state, action);
+    if (this.#state === prevState) return;
+    await this.refresh(this.options.clock.now());
+    this.#notifyStateChanged(prevState);
+    await this.#pushSessionList();
+  }
+
+  #moveActionFor(payload: unknown, slotIndex: number): { readonly kind: typeof SESSION_REDUCER_ACTION.MOVE_SESSION; readonly sessionId: string; readonly slotIndex: number } | undefined {
+    const sessionId = parseSetSlotSessionPayload(payload);
+    if (sessionId === undefined) return undefined;
+    return { kind: SESSION_REDUCER_ACTION.MOVE_SESSION, sessionId, slotIndex };
   }
 
   async refresh(now: number): Promise<void> {
@@ -158,6 +265,7 @@ export class SessionSlotController {
       return;
     }
     if (!this.#matchesCurrentAssignment(visible.slotIndex, sessionId, target, assignmentId)) return;
+    const prevState = this.#state;
     if (outcome === NAVIGATION_OUTCOME.MISSING) {
       this.#state = reduceSessionState(this.#state, {
         kind: SESSION_REDUCER_ACTION.PANE_MISSING,
@@ -176,6 +284,7 @@ export class SessionSlotController {
       });
     }
     await this.refresh(now);
+    this.#notifyStateChanged(prevState);
   }
 
   #matchesCurrentAssignment(slotIndex: number, sessionId: string, target: LocalAgentStatusEvent["target"], assignmentId: string): boolean {
@@ -196,7 +305,6 @@ export class SessionSlotController {
   }
 
   async #refreshVisible(visible: VisibleSessionSlot, state: SessionState, force: boolean, now: number): Promise<void> {
-    this.#cancelAdvisory(visible);
     this.#cancelRetry(visible);
     const generation = visible.renderGeneration + 1;
     visible.renderGeneration = generation;
@@ -204,52 +312,7 @@ export class SessionSlotController {
     if (renderResult === SESSION_SLOT_RENDER_RESULT.FAILED) {
       this.#logRenderFailure();
       this.#scheduleRetry(visible, generation);
-      return;
     }
-    if (this.#visibleActions.get(visible.action.id) !== visible || visible.renderGeneration !== generation) return;
-    const freshNow = Math.max(now, this.options.clock.now());
-    if (this.#scheduleDeadlineRefresh(visible, state, freshNow, generation)) return;
-    this.#scheduleAdvisory(visible, state, freshNow, generation);
-  }
-
-  #scheduleDeadlineRefresh(visible: VisibleSessionSlot, state: SessionState, now: number, renderGeneration: number): boolean {
-    const slot = state.slots[visible.slotIndex];
-    const deadline = slot?.runningSince === undefined ? undefined : slot.runningSince + SESSION_COLOR_LIMITS.RUNNING_ADVISORY_MS;
-    const isRunning = slot?.lifecycle === SESSION_STATUS.STARTED || slot?.lifecycle === SESSION_STATUS.RUNNING;
-    if (!isRunning || visible.renderedColor !== SESSION_SLOT_COLOR.AMBER || deadline === undefined || now < deadline) return false;
-    this.#cancelAdvisory(visible);
-    const generation = visible.advisoryGeneration + 1;
-    visible.advisoryGeneration = generation;
-    visible.advisoryTimer = this.options.scheduler.schedule(() => {
-      if (visible.advisoryGeneration !== generation || visible.renderGeneration !== renderGeneration || this.#visibleActions.get(visible.action.id) !== visible) return;
-      visible.advisoryTimer = undefined;
-      void this.#refreshVisible(visible, this.#state, false, Math.max(this.options.clock.now(), deadline));
-    }, 0);
-    return true;
-  }
-
-  #scheduleAdvisory(visible: VisibleSessionSlot, state: SessionState, now: number, renderGeneration: number): void {
-    if (this.#visibleActions.get(visible.action.id) !== visible || visible.renderGeneration !== renderGeneration) return;
-    const slot = state.slots[visible.slotIndex];
-    if (slot?.lifecycle !== SESSION_STATUS.STARTED && slot?.lifecycle !== SESSION_STATUS.RUNNING) return;
-    if (slot.runningSince === undefined || deriveSlotColor(slot, now) !== SESSION_SLOT_COLOR.AMBER) return;
-    const deadline = slot.runningSince + SESSION_COLOR_LIMITS.RUNNING_ADVISORY_MS;
-    if (now >= deadline) return;
-    this.#cancelAdvisory(visible);
-    const generation = visible.advisoryGeneration + 1;
-    visible.advisoryGeneration = generation;
-    visible.advisoryTimer = this.options.scheduler.schedule(() => {
-      if (visible.advisoryGeneration !== generation || visible.renderGeneration !== renderGeneration || this.#visibleActions.get(visible.action.id) !== visible) return;
-      visible.advisoryTimer = undefined;
-      void this.#refreshVisible(visible, this.#state, false, this.options.clock.now());
-    }, deadline - now);
-  }
-
-  #cancelAdvisory(visible: VisibleSessionSlot): void {
-    if (visible.advisoryTimer === undefined) return;
-    this.options.scheduler.cancel(visible.advisoryTimer);
-    visible.advisoryTimer = undefined;
-    visible.advisoryGeneration += 1;
   }
 
   #scheduleRetry(visible: VisibleSessionSlot, renderGeneration: number): void {
@@ -269,11 +332,7 @@ export class SessionSlotController {
     const renderResult = await this.#renderVisible(visible, this.#state, false, now, generation);
     if (renderResult === SESSION_SLOT_RENDER_RESULT.FAILED) {
       this.#logRenderFailure();
-      return;
     }
-    if (this.#visibleActions.get(visible.action.id) !== visible || visible.renderGeneration !== generation) return;
-    if (this.#scheduleDeadlineRefresh(visible, this.#state, now, generation)) return;
-    this.#scheduleAdvisory(visible, this.#state, now, generation);
   }
 
   #cancelRetry(visible: VisibleSessionSlot): void {
@@ -285,7 +344,6 @@ export class SessionSlotController {
   }
 
   #cancelVisibleWork(visible: VisibleSessionSlot): void {
-    this.#cancelAdvisory(visible);
     this.#cancelRetry(visible);
   }
 
@@ -305,6 +363,46 @@ export class SessionSlotController {
     }
   }
 
+  #logPersistenceFailure(): void {
+    try {
+      this.options.logger.error(SESSION_SLOT_PERSISTENCE_ERROR);
+    } catch {
+      // Subscriber logging failures must not disrupt the reducer/render loop.
+    }
+  }
+
+  #notifyStateChanged(prevState: SessionState): void {
+    if (this.#state === prevState) return;
+    void this.#pushSessionList();
+    const subscriber = this.#stateSubscriber;
+    if (subscriber === undefined) return;
+    const snapshot = this.#state;
+    Promise.resolve()
+      .then(() => subscriber(snapshot))
+      .catch(() => this.#logPersistenceFailure());
+  }
+
+  #sessionListPayload(): { readonly type: typeof SESSION_LIST_PAYLOAD_TYPE; readonly sessions: readonly SessionSlotListEntry[] } {
+    const titles = resolveSlotTitles(this.#state, (paneId) => this.#windowNames.get(paneId));
+    return {
+      type: SESSION_LIST_PAYLOAD_TYPE,
+      sessions: this.#state.slots.flatMap((slot, index) => {
+        if (slot.sessionId === undefined || slot.lifecycle === undefined || slot.source === undefined) return [];
+        return [{ sessionId: slot.sessionId, slotIndex: index, source: slot.source, lifecycle: slot.lifecycle, title: titles[index] ?? slot.source }];
+      }),
+    };
+  }
+
+  async #pushSessionList(): Promise<void> {
+    const inspector = this.options.inspector;
+    if (inspector === undefined || this.#propertyInspectorActionId === undefined) return;
+    try {
+      await inspector.sendToPropertyInspector(this.#sessionListPayload());
+    } catch {
+      // The inspector may have closed mid-push; the next appearance re-sends the list.
+    }
+  }
+
   async #renderVisible(
     visible: VisibleSessionSlot,
     state: SessionState,
@@ -313,14 +411,17 @@ export class SessionSlotController {
     generation: number,
   ): Promise<SessionSlotRenderResult> {
     const color = deriveSlotColor(state.slots[visible.slotIndex], now);
-    if (!force && visible.renderedColor === color) return SESSION_SLOT_RENDER_RESULT.SKIPPED;
+    const title = resolveSlotTitles(state, (paneId) => this.#windowNames.get(paneId))[visible.slotIndex];
+    if (!force && visible.renderedColor === color && visible.renderedTitle === title) return SESSION_SLOT_RENDER_RESULT.SKIPPED;
     try {
+      if (visible.renderedTitle !== title) await visible.action.setTitle(title ?? "");
       await visible.action.setImage(sessionSlotSvgDataUri(color));
     } catch {
       return SESSION_SLOT_RENDER_RESULT.FAILED;
     }
     if (this.#visibleActions.get(visible.action.id) === visible && visible.renderGeneration === generation) {
       visible.renderedColor = color;
+      visible.renderedTitle = title;
     }
     return SESSION_SLOT_RENDER_RESULT.RENDERED;
   }

@@ -89,12 +89,13 @@ describe("session status reducer", () => {
     expect(assignedIds(reused)).toEqual([SESSION_IDS[5], ...SESSION_IDS.slice(1, 5)]);
   });
 
-  it("derives free, running, overdue, completed, error, and acknowledged colors at the exact boundary", () => {
+  it("derives free, running, completed, error, and acknowledged colors independent of elapsed time", () => {
     let state = apply(createSessionState(), event({ timestamp: 0 }));
     const runningSlot = state.slots[0];
     expect(deriveSlotColor(state.slots[1], 0)).toBe(SESSION_SLOT_COLOR.GRAY);
     expect(deriveSlotColor(runningSlot, FIVE_MINUTES - 1)).toBe(SESSION_SLOT_COLOR.AMBER);
-    expect(deriveSlotColor(runningSlot, FIVE_MINUTES)).toBe(SESSION_SLOT_COLOR.RED);
+    expect(deriveSlotColor(runningSlot, FIVE_MINUTES)).toBe(SESSION_SLOT_COLOR.AMBER);
+    expect(deriveSlotColor(runningSlot, Number.MAX_SAFE_INTEGER)).toBe(SESSION_SLOT_COLOR.AMBER);
     expect(runningSlot?.lifecycle).toBe(SESSION_STATUS.STARTED);
 
     state = apply(state, event({ eventNumber: 2, lifecycle: SESSION_STATUS.COMPLETED, timestamp: 1 }));
@@ -218,6 +219,64 @@ describe("session status reducer", () => {
     const second = apply(initial, statusEvent);
 
     expect(first).toEqual(second);
-    expect(deriveSlotColor(first.slots[0], 123 + FIVE_MINUTES)).toBe(SESSION_SLOT_COLOR.RED);
+    expect(deriveSlotColor(first.slots[0], 123 + FIVE_MINUTES)).toBe(SESSION_SLOT_COLOR.AMBER);
+  });
+
+  it("moves a session to an empty slot, preserving its assignment identity", () => {
+    const state = apply(createSessionState(), event({ sessionId: SESSION_IDS[0], tmuxPaneId: "%1" }));
+    const assignmentId = state.slots[0]?.assignmentId;
+
+    const moved = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.MOVE_SESSION, sessionId: SESSION_IDS[0], slotIndex: 3 });
+
+    expect(moved).not.toBe(state);
+    expect(moved.slots[0]?.sessionId).toBeUndefined();
+    expect(moved.slots[3]?.sessionId).toBe(SESSION_IDS[0]);
+    expect(moved.slots[3]?.assignmentId).toBe(assignmentId);
+    expect(moved.slots[3]?.target?.tmuxPaneId).toBe("%1");
+    expect(moved.slots[3]?.index).toBe(3);
+  });
+
+  it("swaps two assigned sessions when the target slot is occupied", () => {
+    let state = apply(createSessionState(), event({ eventNumber: 1, sessionId: SESSION_IDS[0], tmuxPaneId: "%1" }));
+    state = apply(state, event({ eventNumber: 2, sessionId: SESSION_IDS[1], tmuxPaneId: "%2" }));
+
+    const moved = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.MOVE_SESSION, sessionId: SESSION_IDS[0], slotIndex: 1 });
+
+    expect(moved.slots[0]?.sessionId).toBe(SESSION_IDS[1]);
+    expect(moved.slots[0]?.target?.tmuxPaneId).toBe("%2");
+    expect(moved.slots[1]?.sessionId).toBe(SESSION_IDS[0]);
+    expect(moved.slots[1]?.target?.tmuxPaneId).toBe("%1");
+    expect(moved.slots[0]?.index).toBe(0);
+    expect(moved.slots[1]?.index).toBe(1);
+  });
+
+  it("frees a slot on clear without disturbing the other slots", () => {
+    let state = apply(createSessionState(), event({ eventNumber: 1, sessionId: SESSION_IDS[0], tmuxPaneId: "%1" }));
+    state = apply(state, event({ eventNumber: 2, sessionId: SESSION_IDS[1], tmuxPaneId: "%2" }));
+
+    const cleared = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 0 });
+
+    expect(cleared).not.toBe(state);
+    expect(cleared.slots[0]).toEqual({ index: 0 });
+    expect(cleared.slots[1]?.sessionId).toBe(SESSION_IDS[1]);
+    expect(cleared.slots[1]?.target?.tmuxPaneId).toBe("%2");
+  });
+
+  it("treats clearing an empty or out-of-range slot as a no-op", () => {
+    const state = apply(createSessionState(), event({ sessionId: SESSION_IDS[0] }));
+
+    expect(reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 4 })).toBe(state);
+    expect(reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 9 })).toBe(state);
+    expect(reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: -1 })).toBe(state);
+  });
+
+  it("treats unknown sessions, the current slot, and invalid slot indexes as no-ops", () => {
+    const state = apply(createSessionState(), event({ sessionId: SESSION_IDS[0] }));
+
+    expect(reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.MOVE_SESSION, sessionId: SESSION_IDS[5], slotIndex: 2 })).toBe(state);
+    expect(reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.MOVE_SESSION, sessionId: SESSION_IDS[0], slotIndex: 0 })).toBe(state);
+    for (const invalidIndex of [-1, SLOT_COUNT, 0.5, Number.NaN]) {
+      expect(reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.MOVE_SESSION, sessionId: SESSION_IDS[0], slotIndex: invalidIndex })).toBe(state);
+    }
   });
 });

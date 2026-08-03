@@ -24,6 +24,11 @@ vi.mock("@elgato/streamdeck", () => ({
     actions: { registerAction: streamDeckMock.registerAction },
     connect: streamDeckMock.connect,
     logger: { error: streamDeckMock.loggerError },
+    ui: {
+      onDidAppear: vi.fn(),
+      onDidDisappear: vi.fn(),
+      onSendToPlugin: vi.fn(),
+    },
   },
 }));
 
@@ -33,6 +38,7 @@ vi.mock("../src/actions/session-slot", () => ({
 vi.mock("../src/plugin/runtime", () => ({
   registerPluginRuntimeProcessLifecycle: runtimeMock.registerLifecycle,
   startPluginRuntime: runtimeMock.start,
+  derivePluginRootFromBundledModuleUrl: () => "/mock/plugin/root",
 }));
 
 interface PackageManifest {

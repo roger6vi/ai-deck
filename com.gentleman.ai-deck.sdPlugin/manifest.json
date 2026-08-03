@@ -28,6 +28,7 @@
       "UUID": "com.gentleman.ai-deck.session-slot",
       "Icon": "assets/action",
       "Tooltip": "Content-free local session status slot.",
+      "PropertyInspectorPath": "ui/session-slot.html",
       "Controllers": [
         "Keypad"
       ],

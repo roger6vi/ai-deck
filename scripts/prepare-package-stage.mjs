@@ -2,7 +2,7 @@ import { cp, rm } from "node:fs/promises";
 import { relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const PACKAGE_STAGE_ROOTS = new Set(["Profiles", "assets", "bin", "manifest.json"]);
+const PACKAGE_STAGE_ROOTS = new Set(["Profiles", "assets", "bin", "ui", "manifest.json"]);
 
 function belongsInPackageStage(source, path) {
   const [root] = relative(source, path).split(sep);

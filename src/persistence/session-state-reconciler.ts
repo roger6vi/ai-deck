@@ -2,7 +2,7 @@ import { reduceSessionState, SESSION_REDUCER_ACTION, type SessionState } from ".
 import { createBoundedNavigationProcess } from "../navigation/ghostty-tmux";
 
 const TMUX_PANE_PATTERN = /^%\d{1,20}$/;
-const CONTROL_CHARACTER_PATTERN = /[\x00-\x1f\x7f]/;
+export const CONTROL_CHARACTER_PATTERN = /[\x00-\x1f\x7f]/;
 
 export interface TmuxPaneEnumeratorProcess {
   execute(command: string, args: readonly string[]): Promise<{ readonly stdout: string }>;
@@ -33,7 +33,7 @@ export function reconcileSessionState(state: SessionState, existingPaneIds: Read
   return result;
 }
 
-const productionEnumeratorProcess: TmuxPaneEnumeratorProcess = createBoundedNavigationProcess();
+export const productionEnumeratorProcess: TmuxPaneEnumeratorProcess = createBoundedNavigationProcess();
 
 export function createTmuxPaneEnumerator(options: TmuxPaneEnumeratorOptions = { process: productionEnumeratorProcess }): TmuxPaneEnumerator {
   return {

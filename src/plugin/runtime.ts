@@ -1,6 +1,7 @@
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import type { SessionState } from "../core/reducer";
 import type { LocalAgentStatusEvent } from "../core/types";
 import {
   generateEndpointToken,
@@ -18,6 +19,7 @@ import { sessionSlotController } from "./session-slot-controller";
 export const PLUGIN_RUNTIME_LOG_MESSAGE = {
   STARTUP_FAILED: "AI Deck local runtime startup failed.",
   EVENT_FAILED: "AI Deck local runtime event failed.",
+  HYDRATION_FAILED: "AI Deck local runtime hydration failed.",
 } as const;
 
 export interface PluginRuntimeClock {
@@ -31,6 +33,14 @@ export interface PluginRuntimeLogger {
 export interface PluginRuntimeController {
   handleStatusEvent(event: LocalAgentStatusEvent, now: number): Promise<void>;
   dispose(): void;
+  hydrateState?(state: SessionState): Promise<void>;
+  subscribeToStateChanges?(subscriber: (state: SessionState) => void | Promise<void>): () => void;
+}
+
+export interface PluginRuntimePersistence {
+  load(): Promise<SessionState>;
+  save(state: SessionState): Promise<void>;
+  reconcile?(state: SessionState): Promise<SessionState>;
 }
 
 export interface PluginRuntimeHandle {
@@ -48,6 +58,7 @@ export interface PluginRuntimeOptions {
   readonly pid?: number;
   readonly startServer?: (options: LocalEventServerOptions) => Promise<LocalEventServerHandle>;
   readonly publishEndpoint?: (options: EndpointDiscoveryOptions) => Promise<EndpointDiscoveryHandle>;
+  readonly persistence?: PluginRuntimePersistence;
 }
 
 export interface PluginRuntimeSignalProcess {
@@ -90,15 +101,31 @@ export async function startPluginRuntime(options: PluginRuntimeOptions = {}): Pr
     report(logger, PLUGIN_RUNTIME_LOG_MESSAGE.STARTUP_FAILED);
     throw new Error(PLUGIN_RUNTIME_LOG_MESSAGE.STARTUP_FAILED);
   }
+  let unsubscribeStateChanges: (() => void) | undefined;
+  if (options.persistence !== undefined && controller.hydrateState !== undefined) {
+    try {
+      const loaded = await options.persistence.load();
+      const hydrated = options.persistence.reconcile === undefined ? loaded : await options.persistence.reconcile(loaded);
+      await controller.hydrateState(hydrated);
+      if (controller.subscribeToStateChanges !== undefined) {
+        const save = options.persistence.save;
+        unsubscribeStateChanges = controller.subscribeToStateChanges((state) => save(state));
+      }
+    } catch {
+      report(logger, PLUGIN_RUNTIME_LOG_MESSAGE.HYDRATION_FAILED);
+    }
+  }
   try {
     await publishEndpoint({ pluginRoot: options.pluginRoot ?? derivePluginRootFromBundledModuleUrl(import.meta.url), address: server.address, port: server.port, token, pid });
   } catch {
+    if (unsubscribeStateChanges !== undefined) { try { unsubscribeStateChanges(); } catch {} }
     await rollbackRuntime(controller, server);
     report(logger, PLUGIN_RUNTIME_LOG_MESSAGE.STARTUP_FAILED);
     throw new Error(PLUGIN_RUNTIME_LOG_MESSAGE.STARTUP_FAILED);
   }
   let shutdown: Promise<void> | undefined;
   const stop = (): Promise<void> => shutdown ??= (async () => {
+    if (unsubscribeStateChanges !== undefined) { try { unsubscribeStateChanges(); } catch {} }
     controller.dispose();
     await server.close();
   })();

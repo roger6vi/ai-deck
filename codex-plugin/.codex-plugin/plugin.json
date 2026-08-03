@@ -1,0 +1,12 @@
+{
+  "name": "ai-deck-codex",
+  "displayName": "AI Deck Session Status",
+  "version": "0.1.0",
+  "description": "Reports Codex session lifecycle to the AI Deck Stream Deck plugin running on the same Mac. Emits nothing but a session id and its tmux target — never prompts, transcripts, tool output, or secrets.",
+  "shortDescription": "Turns Codex session lifecycle into Stream Deck key colors.",
+  "author": {
+    "name": "roger6vi"
+  },
+  "homepage": "https://github.com/roger6vi/ai-deck",
+  "repository": "https://github.com/roger6vi/ai-deck"
+}
