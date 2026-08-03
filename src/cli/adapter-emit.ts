@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   ENDPOINT_CLIENT_OUTCOME,
@@ -29,6 +31,8 @@ export const ADAPTER_EMIT_OUTCOME_MESSAGE = {
 } as const;
 
 const USAGE = "usage: ai-deck-emit --source <codex|opencode|claude> --session-id <uuid> --lifecycle <started|running|completed|error|pane-disappeared> --pane-id %<N> --session $<N> [--event-id <uuid>] [--window @<N>] [--sequence <n>]";
+
+export const ADAPTER_EMIT_PLUGIN_ROOT_MISSING_MESSAGE = "ai-deck: AI_DECK_PLUGIN_ROOT is not set";
 
 const ALLOWED_FLAGS = new Set([
   "--source",
@@ -154,4 +158,46 @@ export function createProductionAdapterEmitClient(pluginRoot: string): EndpointC
     timer: productionEndpointClientDependencies.timer,
     ownUid: getUid(),
   });
+}
+
+export function isDirectCliInvocation(moduleUrl: string, entryPath: string | undefined, cwd: string = process.cwd()): boolean {
+  if (entryPath === undefined) return false;
+  return resolve(cwd, entryPath) === resolve(fileURLToPath(moduleUrl));
+}
+
+export interface AdapterEmitMainOptions {
+  readonly argv: readonly string[];
+  readonly pluginRoot: string | undefined;
+  readonly clock: AdapterEmitClock;
+  readonly createClient: (pluginRoot: string) => EndpointClient;
+  readonly stdout: AdapterEmitStream;
+  readonly stderr: AdapterEmitStream;
+}
+
+export async function mainAdapterEmit(options: AdapterEmitMainOptions): Promise<AdapterEmitExitCode> {
+  if (options.pluginRoot === undefined || options.pluginRoot.length === 0) {
+    options.stderr.write(`${ADAPTER_EMIT_PLUGIN_ROOT_MISSING_MESSAGE}\n`);
+    return ADAPTER_EMIT_EXIT_CODE.UNAVAILABLE;
+  }
+  return runAdapterEmit({
+    argv: options.argv,
+    clock: options.clock,
+    client: options.createClient(options.pluginRoot),
+    stdout: options.stdout,
+    stderr: options.stderr,
+  });
+}
+
+if (isDirectCliInvocation(import.meta.url, process.argv[1])) {
+  mainAdapterEmit({
+    argv: process.argv.slice(2),
+    pluginRoot: process.env.AI_DECK_PLUGIN_ROOT,
+    clock: { now: () => Date.now() },
+    createClient: createProductionAdapterEmitClient,
+    stdout: process.stdout,
+    stderr: process.stderr,
+  }).then(
+    (code) => { process.exitCode = code; },
+    () => { process.exitCode = ADAPTER_EMIT_EXIT_CODE.LOCAL_ERROR; },
+  );
 }

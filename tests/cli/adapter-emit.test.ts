@@ -4,6 +4,9 @@ import { ENDPOINT_CLIENT_OUTCOME, type EndpointClient } from "../../src/adapters
 import {
   ADAPTER_EMIT_EXIT_CODE,
   ADAPTER_EMIT_OUTCOME_MESSAGE,
+  ADAPTER_EMIT_PLUGIN_ROOT_MISSING_MESSAGE,
+  isDirectCliInvocation,
+  mainAdapterEmit,
   parseAdapterEmitArgs,
   runAdapterEmit,
 } from "../../src/cli/adapter-emit";
@@ -175,5 +178,63 @@ describe("runAdapterEmit", () => {
     const output = stderr.join("");
     expect(output).not.toContain("Error");
     expect(output).not.toMatch(/stack/i);
+  });
+});
+
+describe("isDirectCliInvocation", () => {
+  const moduleUrl = "file:///repo/src/cli/adapter-emit.ts";
+
+  it("returns true when argv[1] resolves to the module path", () => {
+    expect(isDirectCliInvocation(moduleUrl, "/repo/src/cli/adapter-emit.ts")).toBe(true);
+  });
+
+  it("returns true for a relative argv[1] that resolves to the module path", () => {
+    expect(isDirectCliInvocation(moduleUrl, "src/cli/adapter-emit.ts", "/repo")).toBe(true);
+  });
+
+  it("returns false for a different entry path", () => {
+    expect(isDirectCliInvocation(moduleUrl, "/repo/src/plugin.ts")).toBe(false);
+  });
+
+  it("returns false when argv[1] is undefined", () => {
+    expect(isDirectCliInvocation(moduleUrl, undefined)).toBe(false);
+  });
+});
+
+describe("mainAdapterEmit", () => {
+  it("returns UNAVAILABLE and never builds a client when the plugin root is missing", async () => {
+    const createClient = vi.fn();
+    const stderr: string[] = [];
+    const exit = await mainAdapterEmit({
+      argv: [...VALID_ARGS],
+      pluginRoot: undefined,
+      clock: CLOCK,
+      createClient,
+      stdout: { write: () => undefined },
+      stderr: { write: (text) => { stderr.push(text); } },
+    });
+
+    expect(exit).toBe(ADAPTER_EMIT_EXIT_CODE.UNAVAILABLE);
+    expect(createClient).not.toHaveBeenCalled();
+    expect(stderr.join("")).toContain(ADAPTER_EMIT_PLUGIN_ROOT_MISSING_MESSAGE);
+  });
+
+  it("builds the production client for the plugin root and emits the parsed event", async () => {
+    const { client, calls } = stubClient(ENDPOINT_CLIENT_OUTCOME.EMITTED);
+    const createClient = vi.fn(() => client);
+    const stdout: string[] = [];
+    const exit = await mainAdapterEmit({
+      argv: [...VALID_ARGS],
+      pluginRoot: "/plugin/root",
+      clock: CLOCK,
+      createClient,
+      stdout: { write: (text) => { stdout.push(text); } },
+      stderr: { write: () => undefined },
+    });
+
+    expect(exit).toBe(ADAPTER_EMIT_EXIT_CODE.EMITTED);
+    expect(createClient).toHaveBeenCalledWith("/plugin/root");
+    expect(calls).toHaveLength(1);
+    expect(stdout.join("")).toContain(ADAPTER_EMIT_OUTCOME_MESSAGE.EMITTED);
   });
 });
