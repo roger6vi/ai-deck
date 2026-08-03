@@ -26,6 +26,18 @@ const SESSION_IDS = [
 
 const DISABLED_GRAY_PAINT = "#6B7280";
 
+function hermeticController(): SessionSlotController {
+  return new SessionSlotController({
+    clock: { now: Date.now },
+    scheduler: {
+      schedule: (callback, delayMs) => setTimeout(callback, delayMs),
+      cancel: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+    },
+    logger: { error: vi.fn() },
+    windowNameResolver: { resolve: async () => undefined },
+  });
+}
+
 interface MockKey {
   readonly id: string;
   readonly coordinates?: { readonly column: number; readonly row: number };
@@ -143,7 +155,7 @@ describe("session slot Stream Deck integration", () => {
   });
 
   it("renders only affected visible contexts for lifecycle changes, keeping running amber and reserving red for errors", async () => {
-    const controller = new SessionSlotController();
+    const controller = hermeticController();
     const first = key("first", 0);
     const second = key("second", 1);
     await controller.registerVisibleAction(appear(first));
@@ -183,7 +195,7 @@ describe("session slot Stream Deck integration", () => {
   });
 
   it("keeps contexts and sessions independent, releases only from pane-disappeared, and cleans up safely", async () => {
-    const controller = new SessionSlotController();
+    const controller = hermeticController();
     const action = new SessionSlotActionBase(controller, () => 3);
     const first = key("first", 0);
     const second = key("second", 1);
@@ -203,7 +215,7 @@ describe("session slot Stream Deck integration", () => {
   });
 
   it("uses explicit SVG paints in SDK-supported base64 images and contains rejected direct renders", async () => {
-    const controller = new SessionSlotController();
+    const controller = hermeticController();
     const rejected = key("rejected", 0);
     rejected.setImage.mockRejectedValueOnce(new Error("offline"));
 
@@ -230,7 +242,7 @@ describe("session slot Stream Deck integration", () => {
   });
 
   it("uses disabled gray while unassigned and amber for started sessions through a strict image host", async () => {
-    const controller = new SessionSlotController();
+    const controller = hermeticController();
     const action = key("contract-host", 0);
     action.setImage.mockImplementation(async (image) => { decodeSdkSvgImage(image ?? ""); });
 

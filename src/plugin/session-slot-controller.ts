@@ -16,6 +16,11 @@ import {
   type AssignedTargetNavigator,
   type NavigationOutcome,
 } from "../navigation/ghostty-tmux";
+import {
+  createTmuxWindowNameResolver,
+  resolveSlotTitles,
+  type SessionWindowNameResolver,
+} from "./session-slot-title";
 
 const SESSION_SLOT_IMAGE = {
   PREFIX: "data:image/svg+xml;base64,",
@@ -56,6 +61,7 @@ export interface SessionSlotControllerOptions {
   readonly scheduler: SessionSlotScheduler;
   readonly logger: SessionSlotLogger;
   readonly navigator?: AssignedTargetNavigator;
+  readonly windowNameResolver?: SessionWindowNameResolver;
 }
 
 const productionControllerOptions: SessionSlotControllerOptions = {
@@ -68,6 +74,7 @@ const productionControllerOptions: SessionSlotControllerOptions = {
     error: (message) => streamDeck.logger.error(message),
   },
   navigator: ghosttyTmuxNavigator,
+  windowNameResolver: createTmuxWindowNameResolver(),
 };
 
 interface VisibleSessionSlot {
@@ -76,6 +83,7 @@ interface VisibleSessionSlot {
   renderGeneration: number;
   retryGeneration: number;
   renderedColor?: SessionSlotColor;
+  renderedTitle: string | undefined;
   retryTimer?: unknown;
 }
 
@@ -101,6 +109,7 @@ export class SessionSlotController {
   #state = createSessionState();
   #visibleActions = new Map<string, VisibleSessionSlot>();
   #stateSubscriber: SessionStateSubscriber | undefined = undefined;
+  #windowNames = new Map<string, string | undefined>();
 
   constructor(private readonly options: SessionSlotControllerOptions = productionControllerOptions) {}
 
@@ -119,7 +128,19 @@ export class SessionSlotController {
 
   async hydrateState(state: SessionState): Promise<void> {
     this.#state = state;
+    await this.#resolveWindowNames(state);
     await this.refresh(this.options.clock.now());
+  }
+
+  async #resolveWindowNames(state: SessionState): Promise<void> {
+    const resolver = this.options.windowNameResolver;
+    if (resolver === undefined) return;
+    const paneIds = new Set<string>();
+    for (const slot of state.slots) {
+      if (slot.sessionId !== undefined && slot.target !== undefined) paneIds.add(slot.target.tmuxPaneId);
+    }
+    const entries = await Promise.all([...paneIds].map(async (paneId) => [paneId, await resolver.resolve(paneId)] as const));
+    this.#windowNames = new Map(entries);
   }
 
   async registerVisibleAction(event: WillAppearEvent): Promise<void> {
@@ -128,7 +149,7 @@ export class SessionSlotController {
     const action = event.action as KeyAction;
     const priorVisible = this.#visibleActions.get(action.id);
     if (priorVisible !== undefined) this.#cancelVisibleWork(priorVisible);
-    const visible: VisibleSessionSlot = { action, slotIndex, renderGeneration: 0, retryGeneration: 0 };
+    const visible: VisibleSessionSlot = { action, slotIndex, renderGeneration: 0, retryGeneration: 0, renderedTitle: undefined };
     this.#visibleActions.set(action.id, visible);
     await this.#refreshVisible(visible, this.#state, true, this.options.clock.now());
   }
@@ -143,6 +164,7 @@ export class SessionSlotController {
   async handleStatusEvent(event: LocalAgentStatusEvent, now: number): Promise<void> {
     const prevState = this.#state;
     this.#state = reduceSessionState(this.#state, { kind: SESSION_REDUCER_ACTION.EVENT, event });
+    await this.#resolveWindowNames(this.#state);
     await this.refresh(now);
     this.#notifyStateChanged(prevState);
   }
@@ -296,14 +318,17 @@ export class SessionSlotController {
     generation: number,
   ): Promise<SessionSlotRenderResult> {
     const color = deriveSlotColor(state.slots[visible.slotIndex], now);
-    if (!force && visible.renderedColor === color) return SESSION_SLOT_RENDER_RESULT.SKIPPED;
+    const title = resolveSlotTitles(state, (paneId) => this.#windowNames.get(paneId))[visible.slotIndex];
+    if (!force && visible.renderedColor === color && visible.renderedTitle === title) return SESSION_SLOT_RENDER_RESULT.SKIPPED;
     try {
+      if (visible.renderedTitle !== title) await visible.action.setTitle(title ?? "");
       await visible.action.setImage(sessionSlotSvgDataUri(color));
     } catch {
       return SESSION_SLOT_RENDER_RESULT.FAILED;
     }
     if (this.#visibleActions.get(visible.action.id) === visible && visible.renderGeneration === generation) {
       visible.renderedColor = color;
+      visible.renderedTitle = title;
     }
     return SESSION_SLOT_RENDER_RESULT.RENDERED;
   }

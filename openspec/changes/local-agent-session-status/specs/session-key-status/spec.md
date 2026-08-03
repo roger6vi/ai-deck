@@ -5,6 +5,8 @@
 ### Requirement: Five-key state
 The system MUST expose exactly five session keys, assign first-free, and keep each assignment stable while its session and recorded pane exist. Concurrent sessions MUST be independent. With N assigned sessions (0..5), exactly N keys MUST show assigned-state colors and the remaining 5-N keys MUST render disabled gray. Green MUST denote an assigned session that is idle/read or has been physically acknowledged/read; it MUST NOT denote free capacity. Amber MUST denote an assigned session that is started/running, regardless of elapsed time. Red MUST denote an assigned session that has errored; red MUST be reserved for errors only and MUST NOT be derived from elapsed running time. Blue MUST denote an assigned session completed and unread; blue MUST persist until physical acknowledgement. Only physical press on the assigned key MUST acknowledge blue. Pane disappearance MUST immediately release the assignment and return that key to disabled gray.
 
+Each assigned key MUST display the session's tmux window name as its title. The name MUST be resolved locally from tmux by the plugin (never transported in adapter events), MUST be stripped of control characters and length-bounded, and MUST fall back to a color-only key when tmux cannot provide it. When multiple assigned slots resolve to the same window name, the lowest-index slot MUST show the bare name and every other duplicate MUST append its pane identifier as a suffix. Releasing a slot MUST clear its title.
+
 #### Scenario: Two OpenCode sessions
 - GIVEN two OpenCode sessions and five free keys
 - WHEN both become active
