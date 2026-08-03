@@ -30,6 +30,12 @@ describe("session slot property inspector page", () => {
     expect(html).toContain("None");
   });
 
+  it("tells the user where each session currently sits, including nowhere", async () => {
+    const html = await readFile(PI_PATH, "utf8");
+    expect(html).toContain("unassigned");
+    expect(html).toContain("session.slotIndex === undefined");
+  });
+
   it("renders sessions payloads and sends set-slot-session selections", async () => {
     const html = await readFile(PI_PATH, "utf8");
     expect(html).toContain('"sendToPropertyInspector"');

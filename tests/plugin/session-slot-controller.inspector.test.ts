@@ -108,7 +108,7 @@ describe("session slot property inspector", () => {
     expect(sessions[0]).toMatchObject({ sessionId: SESSION_ID, slotIndex: 0 });
   });
 
-  it("frees the key slot on clear-slot and re-sends the list without it", async () => {
+  it("keeps a cleared session in the list so the user can put it back on a key", async () => {
     const { controller, inspector } = fixture();
     const first = key("first", 0);
     await controller.registerVisibleAction(appear(first));
@@ -117,7 +117,23 @@ describe("session slot property inspector", () => {
 
     await controller.handleSendToPlugin(first.id, { type: "clear-slot" });
 
-    expect(lastSessions(inspector)).toHaveLength(0);
+    const sessions = lastSessions(inspector);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]?.sessionId).toBe(SESSION_ID);
+    expect(sessions[0]?.slotIndex).toBeUndefined();
+  });
+
+  it("puts an unassigned session back on the key the user chose", async () => {
+    const { controller, inspector } = fixture();
+    const first = key("first", 0);
+    await controller.registerVisibleAction(appear(first));
+    await controller.handleStatusEvent(status(), 1);
+    await controller.handlePropertyInspectorAppeared(first.id);
+    await controller.handleSendToPlugin(first.id, { type: "clear-slot" });
+
+    await controller.handleSendToPlugin(first.id, { type: "set-slot-session", sessionId: SESSION_ID });
+
+    expect(lastSessions(inspector)[0]).toMatchObject({ sessionId: SESSION_ID, slotIndex: 0 });
   });
 
   it("ignores an unknown inspector payload without answering", async () => {

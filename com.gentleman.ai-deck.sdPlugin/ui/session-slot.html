@@ -14,7 +14,7 @@
 <body>
 <label for="session">Assigned session</label>
 <select id="session" disabled><option>No active sessions</option></select>
-<div class="hint">Choosing a session moves it to this key; occupants swap slots.</div>
+<div class="hint">Choosing a session moves it to this key; the occupant takes its place. "None" frees the key and keeps the session selectable.</div>
 <script>
 "use strict";
 const select = document.getElementById("session");
@@ -51,7 +51,10 @@ function render() {
   for (const session of sessions) {
     const option = document.createElement("option");
     option.value = session.sessionId;
-    option.textContent = session.title + " · " + session.source + " · " + session.lifecycle;
+    const where = session.slotIndex === undefined
+      ? "unassigned"
+      : session.slotIndex === slot ? "this key" : "key " + (session.slotIndex + 1);
+    option.textContent = session.title + " · " + session.source + " · " + session.lifecycle + " · " + where;
     if (session.slotIndex === slot) option.selected = true;
     select.append(option);
   }

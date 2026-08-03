@@ -262,6 +262,62 @@ describe("session status reducer", () => {
     expect(cleared.slots[1]?.target?.tmuxPaneId).toBe("%2");
   });
 
+  it("keeps a cleared session known and unassigned instead of destroying it", () => {
+    const state = apply(createSessionState(), event({ sessionId: SESSION_IDS[0], tmuxPaneId: "%1" }));
+    const assignmentId = state.slots[0]?.assignmentId;
+
+    const cleared = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 0 });
+
+    expect(cleared.unassignedSessions).toHaveLength(1);
+    expect(cleared.unassignedSessions[0]).toMatchObject({
+      sessionId: SESSION_IDS[0],
+      assignmentId,
+      target: { tmuxPaneId: "%1" },
+    });
+  });
+
+  it("puts an unassigned session back on any free slot the user picks", () => {
+    let state = apply(createSessionState(), event({ sessionId: SESSION_IDS[0], tmuxPaneId: "%1" }));
+    state = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 0 });
+
+    const restored = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.MOVE_SESSION, sessionId: SESSION_IDS[0], slotIndex: 3 });
+
+    expect(restored.slots[3]?.sessionId).toBe(SESSION_IDS[0]);
+    expect(restored.slots[3]?.target?.tmuxPaneId).toBe("%1");
+    expect(restored.unassignedSessions).toHaveLength(0);
+  });
+
+  it("unassigns the occupant when an unassigned session is placed on a taken slot", () => {
+    let state = apply(createSessionState(), event({ eventNumber: 1, sessionId: SESSION_IDS[0], tmuxPaneId: "%1" }));
+    state = apply(state, event({ eventNumber: 2, sessionId: SESSION_IDS[1], tmuxPaneId: "%2" }));
+    state = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 0 });
+
+    const placed = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.MOVE_SESSION, sessionId: SESSION_IDS[0], slotIndex: 1 });
+
+    expect(placed.slots[1]?.sessionId).toBe(SESSION_IDS[0]);
+    expect(placed.unassignedSessions.map((session) => session.sessionId)).toEqual([SESSION_IDS[1]]);
+  });
+
+  it("respects the user by leaving an unassigned session unassigned when it reports again", () => {
+    let state = apply(createSessionState(), event({ eventNumber: 1, sessionId: SESSION_IDS[0], tmuxPaneId: "%1" }));
+    state = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 0 });
+
+    const updated = apply(state, event({ eventNumber: 2, sessionId: SESSION_IDS[0], tmuxPaneId: "%1", lifecycle: SESSION_STATUS.COMPLETED }));
+
+    expect(updated.slots.every((slot) => slot.sessionId === undefined)).toBe(true);
+    expect(updated.unassignedSessions).toHaveLength(1);
+    expect(updated.unassignedSessions[0]?.lifecycle).toBe(SESSION_STATUS.COMPLETED);
+  });
+
+  it("forgets an unassigned session once its pane is gone", () => {
+    let state = apply(createSessionState(), event({ eventNumber: 1, sessionId: SESSION_IDS[0], tmuxPaneId: "%1" }));
+    state = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 0 });
+
+    const gone = apply(state, event({ eventNumber: 2, sessionId: SESSION_IDS[0], tmuxPaneId: "%1", lifecycle: SESSION_STATUS.PANE_DISAPPEARED }));
+
+    expect(gone.unassignedSessions).toHaveLength(0);
+  });
+
   it("treats clearing an empty or out-of-range slot as a no-op", () => {
     const state = apply(createSessionState(), event({ sessionId: SESSION_IDS[0] }));
 

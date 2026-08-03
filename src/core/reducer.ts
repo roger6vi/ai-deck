@@ -13,6 +13,7 @@ export const SESSION_REDUCER_ACTION = {
 export const SESSION_REDUCER_LIMITS = {
   SLOT_COUNT: 5,
   RETIRED_SESSION_LIMIT: 16,
+  UNASSIGNED_SESSION_LIMIT: 16,
 } as const;
 
 export interface SessionSlot {
@@ -36,8 +37,16 @@ export interface RetiredSession {
   readonly lastSequence?: number;
 }
 
+/**
+ * A session the plugin knows about that currently sits on no key. Clearing a
+ * key must not destroy its session: the user decides what a key shows, so an
+ * unassigned session stays selectable until its pane is gone.
+ */
+export type UnassignedSession = Omit<SessionSlot, "index">;
+
 export interface SessionState {
   readonly slots: readonly SessionSlot[];
+  readonly unassignedSessions: readonly UnassignedSession[];
   readonly retiredSessions: readonly RetiredSession[];
 }
 
@@ -84,11 +93,27 @@ function copyTarget(target: LocalAgentTargetMetadata): LocalAgentTargetMetadata 
   return Object.freeze(target.tmuxWindow === undefined ? copied : { ...copied, tmuxWindow: target.tmuxWindow });
 }
 
-function freezeState(slots: readonly SessionSlot[], retiredSessions: readonly RetiredSession[]): SessionState {
+function freezeState(
+  slots: readonly SessionSlot[],
+  retiredSessions: readonly RetiredSession[],
+  unassignedSessions: readonly UnassignedSession[],
+): SessionState {
   return Object.freeze({
     slots: Object.freeze(slots.map((slot) => Object.freeze({ ...slot }))),
+    unassignedSessions: Object.freeze(
+      unassignedSessions.slice(-SESSION_REDUCER_LIMITS.UNASSIGNED_SESSION_LIMIT).map((session) => Object.freeze({ ...session })),
+    ),
     retiredSessions: Object.freeze(retiredSessions.map((session) => Object.freeze({ ...session }))),
   });
+}
+
+function withoutUnassigned(unassignedSessions: readonly UnassignedSession[], sessionId: string): readonly UnassignedSession[] {
+  return unassignedSessions.filter((session) => session.sessionId !== sessionId);
+}
+
+function unassignedFromSlot(slot: SessionSlot): UnassignedSession {
+  const { index: _index, ...session } = slot;
+  return session;
 }
 
 function isNewer(lastTimestamp: number, lastSequence: number | undefined, event: LocalAgentStatusEvent): boolean {
@@ -162,10 +187,29 @@ function reduceEvent(state: SessionState, event: LocalAgentStatusEvent): Session
     }
     if (event.lifecycle === SESSION_STATUS.PANE_DISAPPEARED) {
       const slots = state.slots.map((current) => current.index === slotIndex ? { index: slotIndex } : current);
-      return freezeState(slots, addRetired(state.retiredSessions, event));
+      return freezeState(slots, addRetired(state.retiredSessions, event), state.unassignedSessions);
     }
     const slots = state.slots.map((current) => current.index === slotIndex ? slotFromEvent(slotIndex, event, slot.assignmentId ?? event.eventId, slot.runningSince) : current);
-    return freezeState(slots, state.retiredSessions);
+    return freezeState(slots, state.retiredSessions, state.unassignedSessions);
+  }
+
+  const unassignedIndex = state.unassignedSessions.findIndex((session) => session.sessionId === event.sessionId);
+  if (unassignedIndex >= 0) {
+    // The user took this session off its key. Keep honouring that: report the
+    // new lifecycle, but never drag it back onto a key on its own.
+    const existing = state.unassignedSessions[unassignedIndex];
+    if (existing === undefined || isDuplicateOrStale(existing.lastEventId ?? "", existing.lastTimestamp, existing.lastSequence, event)) {
+      return state;
+    }
+    if (event.lifecycle === SESSION_STATUS.PANE_DISAPPEARED) {
+      return freezeState(state.slots, addRetired(state.retiredSessions, event), withoutUnassigned(state.unassignedSessions, event.sessionId));
+    }
+    const updated = unassignedFromSlot(slotFromEvent(0, event, existing.assignmentId ?? event.eventId, existing.runningSince));
+    return freezeState(
+      state.slots,
+      state.retiredSessions,
+      state.unassignedSessions.map((session, index) => index === unassignedIndex ? updated : session),
+    );
   }
 
   const retired = state.retiredSessions.find((session) => session.sessionId === event.sessionId);
@@ -183,7 +227,7 @@ function reduceEvent(state: SessionState, event: LocalAgentStatusEvent): Session
   const retiredSessions = retired === undefined
     ? state.retiredSessions
     : state.retiredSessions.filter((session) => session.sessionId !== event.sessionId);
-  return freezeState(slots, retiredSessions);
+  return freezeState(slots, retiredSessions, state.unassignedSessions);
 }
 
 function reducePhysicalKeyDown(
@@ -197,45 +241,56 @@ function reducePhysicalKeyDown(
   if ((sessionId !== undefined || target !== undefined || assignmentId !== undefined) && (sessionId === undefined || target === undefined || assignmentId === undefined || !matchesAssignment(slot, sessionId, target, assignmentId))) return state;
   if (slot?.lifecycle !== SESSION_STATUS.COMPLETED || slot.acknowledged) return state;
   const slots = state.slots.map((current) => current.index === slotIndex ? { ...current, acknowledged: true } : current);
-  return freezeState(slots, state.retiredSessions);
+  return freezeState(slots, state.retiredSessions, state.unassignedSessions);
 }
 
 function reducePaneMissing(state: SessionState, action: PaneMissingAction): SessionState {
   const slot = state.slots[action.slotIndex];
   if (slot === undefined || !matchesAssignment(slot, action.sessionId, action.target, action.assignmentId)) return state;
   const slots = state.slots.map((current) => current.index === action.slotIndex ? { index: current.index } : current);
-  return freezeState(slots, addRetiredSlot(state.retiredSessions, slot));
+  return freezeState(slots, addRetiredSlot(state.retiredSessions, slot), state.unassignedSessions);
 }
 
 function reduceMoveSession(state: SessionState, action: MoveSessionAction): SessionState {
   if (!Number.isInteger(action.slotIndex) || action.slotIndex < 0 || action.slotIndex >= state.slots.length) return state;
-  const fromIndex = state.slots.findIndex((slot) => slot.sessionId === action.sessionId);
-  if (fromIndex < 0 || fromIndex === action.slotIndex) return state;
-  const from = state.slots[fromIndex];
   const to = state.slots[action.slotIndex];
-  if (from === undefined || to === undefined) return state;
-  const slots = state.slots.map((slot) => {
-    if (slot.index === fromIndex) return { ...to, index: fromIndex };
-    if (slot.index === action.slotIndex) return { ...from, index: action.slotIndex };
-    return slot;
-  });
-  return freezeState(slots, state.retiredSessions);
+  if (to === undefined) return state;
+  const fromIndex = state.slots.findIndex((slot) => slot.sessionId === action.sessionId);
+  if (fromIndex >= 0) {
+    if (fromIndex === action.slotIndex) return state;
+    const from = state.slots[fromIndex];
+    if (from === undefined) return state;
+    const slots = state.slots.map((slot) => {
+      if (slot.index === fromIndex) return { ...to, index: fromIndex };
+      if (slot.index === action.slotIndex) return { ...from, index: action.slotIndex };
+      return slot;
+    });
+    return freezeState(slots, state.retiredSessions, state.unassignedSessions);
+  }
+
+  const unassigned = state.unassignedSessions.find((session) => session.sessionId === action.sessionId);
+  if (unassigned === undefined) return state;
+  const slots = state.slots.map((slot) => slot.index === action.slotIndex ? { ...unassigned, index: action.slotIndex } : slot);
+  const displaced = to.sessionId === undefined ? [] : [unassignedFromSlot(to)];
+  return freezeState(slots, state.retiredSessions, [...withoutUnassigned(state.unassignedSessions, action.sessionId), ...displaced]);
 }
 
 /**
- * Frees a key without retiring its session: the session is simply no longer
- * shown, and a later event assigns it to whichever slot is free.
+ * Frees a key without forgetting its session. The session stays known and
+ * selectable so the user can put it back on any key; only a vanished pane
+ * removes it for good.
  */
 function reduceClearSlot(state: SessionState, action: ClearSlotAction): SessionState {
   if (!Number.isInteger(action.slotIndex) || action.slotIndex < 0 || action.slotIndex >= state.slots.length) return state;
-  if (state.slots[action.slotIndex]?.sessionId === undefined) return state;
-  const slots = state.slots.map((slot) => slot.index === action.slotIndex ? { index: action.slotIndex } : slot);
-  return freezeState(slots, state.retiredSessions);
+  const slot = state.slots[action.slotIndex];
+  if (slot?.sessionId === undefined) return state;
+  const slots = state.slots.map((current) => current.index === action.slotIndex ? { index: action.slotIndex } : current);
+  return freezeState(slots, state.retiredSessions, [...withoutUnassigned(state.unassignedSessions, slot.sessionId), unassignedFromSlot(slot)]);
 }
 
 export function createSessionState(): SessionState {
   const slots = Array.from({ length: SESSION_REDUCER_LIMITS.SLOT_COUNT }, (_, index) => ({ index }));
-  return freezeState(slots, []);
+  return freezeState(slots, [], []);
 }
 
 export function reduceSessionState(state: SessionState, action: SessionReducerAction): SessionState {

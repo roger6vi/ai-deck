@@ -48,7 +48,8 @@ export const CLEAR_SLOT_EVENT = "clear-slot";
 
 export interface SessionSlotListEntry {
   readonly sessionId: string;
-  readonly slotIndex: number;
+  /** Absent while the session sits on no key. */
+  readonly slotIndex?: number;
   readonly source: string;
   readonly lifecycle: string;
   readonly title: string;
@@ -386,10 +387,19 @@ export class SessionSlotController {
     const titles = resolveSlotTitles(this.#state, (paneId) => this.#windowNames.get(paneId));
     return {
       type: SESSION_LIST_PAYLOAD_TYPE,
-      sessions: this.#state.slots.flatMap((slot, index) => {
-        if (slot.sessionId === undefined || slot.lifecycle === undefined || slot.source === undefined) return [];
-        return [{ sessionId: slot.sessionId, slotIndex: index, source: slot.source, lifecycle: slot.lifecycle, title: titles[index] ?? slot.source }];
-      }),
+      sessions: [
+        ...this.#state.slots.flatMap((slot, index) => {
+          if (slot.sessionId === undefined || slot.lifecycle === undefined || slot.source === undefined) return [];
+          return [{ sessionId: slot.sessionId, slotIndex: index, source: slot.source, lifecycle: slot.lifecycle, title: titles[index] ?? slot.source }];
+        }),
+        // A session with no key still belongs in the list; that is the only way
+        // the user can put it back on one.
+        ...this.#state.unassignedSessions.flatMap((session) => {
+          if (session.sessionId === undefined || session.lifecycle === undefined || session.source === undefined) return [];
+          const title = session.target === undefined ? session.source : this.#windowNames.get(session.target.tmuxPaneId) ?? session.source;
+          return [{ sessionId: session.sessionId, source: session.source, lifecycle: session.lifecycle, title }];
+        }),
+      ],
     };
   }
 
