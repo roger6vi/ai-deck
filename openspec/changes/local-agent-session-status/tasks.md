@@ -30,8 +30,8 @@ Actual C2 pre-PR remediation candidate: 1,580 changed lines (1,527 additions, 53
 
 ## Phase 3: Integration and Local Boundaries
 
-- [ ] 3.1 RED: Add remaining plugin/navigation/adapter tests for rendering, press, target failures, recovery, privacy rejection, timeout, duplicate, and fail-open behavior. C1 real-loopback hardening, C2a endpoint discovery, and C2b plugin wiring are complete; navigation, adapter, and recovery scope remains pending.
-- [ ] 3.2 GREEN: Complete navigation, persistence, adapters, and safe commands without synthetic input. C1/C2a/C2b localhost bearer IPC, restricted plugin-root `runtime/endpoint.json`, and plugin wiring are complete; the remaining scopes stay pending.
+- [ ] 3.1 RED: Navigation sub-slice is complete; adapter, recovery, privacy, timeout, duplicate, and fail-open scenarios remain pending.
+- [ ] 3.2 GREEN: Navigation sub-slice is complete; persistence, adapters, installers, and remaining safe commands remain pending.
 - [ ] 3.3 GREEN: Implement optional Codex/OpenCode/Claude adapters and installers; emit only normalized metadata and fail under 200ms.
 - [ ] 3.4 REFACTOR: Verify ambiguity safety, pane release, redaction, and green/read recovery.
 

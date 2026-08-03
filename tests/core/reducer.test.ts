@@ -154,6 +154,32 @@ describe("session status reducer", () => {
     expect(deriveSlotColor(restarted.slots[0], 21)).toBe(SESSION_SLOT_COLOR.AMBER);
   });
 
+  it("distinguishes a restarted same-value assignment from its delayed missing-pane result", () => {
+    const assigned = apply(createSessionState(), event({ eventNumber: 1, tmuxPaneId: "%1" }));
+    const released = apply(assigned, event({ eventNumber: 2, lifecycle: SESSION_STATUS.PANE_DISAPPEARED, tmuxPaneId: "%1" }));
+    const restarted = apply(released, event({ eventNumber: 3, lifecycle: SESSION_STATUS.STARTED, tmuxPaneId: "%1" }));
+    const original = assigned.slots[0];
+    const current = restarted.slots[0];
+    if (original?.target === undefined || current?.target === undefined) throw new Error("Expected assigned targets.");
+    const delayed = reduceSessionState(restarted, {
+      kind: SESSION_REDUCER_ACTION.PANE_MISSING,
+      slotIndex: 0,
+      sessionId: SESSION_IDS[0],
+      target: original.target,
+      assignmentId: original.assignmentId ?? "",
+    });
+    const missing = reduceSessionState(restarted, {
+      kind: SESSION_REDUCER_ACTION.PANE_MISSING,
+      slotIndex: 0,
+      sessionId: SESSION_IDS[0],
+      target: current.target,
+      assignmentId: current.assignmentId ?? "",
+    });
+    expect(delayed).toBe(restarted);
+    expect(missing.slots[0]?.sessionId).toBeUndefined();
+    expect(deriveSlotColor(missing.slots[0], 3)).toBe(SESSION_SLOT_COLOR.GRAY);
+  });
+
   it("returns frozen isolated state without retaining references or work content", () => {
     const rawTarget = { tmuxPaneId: "%1", tmuxSession: "$0", ghosttyBundleId: "com.mitchellh.ghostty" };
     const untrustedEvent = Object.assign(event(), { target: rawTarget, prompt: "confidential work" });
