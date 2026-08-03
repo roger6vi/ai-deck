@@ -108,6 +108,18 @@ describe("session slot property inspector", () => {
     expect(sessions[0]).toMatchObject({ sessionId: SESSION_ID, slotIndex: 0 });
   });
 
+  it("frees the key slot on clear-slot and re-sends the list without it", async () => {
+    const { controller, inspector } = fixture();
+    const first = key("first", 0);
+    await controller.registerVisibleAction(appear(first));
+    await controller.handleStatusEvent(status(), 1);
+    await controller.handlePropertyInspectorAppeared(first.id);
+
+    await controller.handleSendToPlugin(first.id, { type: "clear-slot" });
+
+    expect(lastSessions(inspector)).toHaveLength(0);
+  });
+
   it("ignores an unknown inspector payload without answering", async () => {
     const { controller, inspector } = fixture();
     const first = key("first", 0);

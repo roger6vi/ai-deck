@@ -43,6 +43,11 @@ function render() {
     return;
   }
   select.disabled = false;
+  const none = document.createElement("option");
+  none.value = "";
+  none.textContent = "None";
+  none.selected = !sessions.some((session) => session.slotIndex === slot);
+  select.append(none);
   for (const session of sessions) {
     const option = document.createElement("option");
     option.value = session.sessionId;
@@ -81,7 +86,9 @@ select.addEventListener("change", () => {
   socket.send(JSON.stringify({
     event: "sendToPlugin",
     context: inspectorUUID,
-    payload: { type: "set-slot-session", sessionId: select.value },
+    payload: select.value === ""
+      ? { type: "clear-slot" }
+      : { type: "set-slot-session", sessionId: select.value },
   }));
 });
 </script>

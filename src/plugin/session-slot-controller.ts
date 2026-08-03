@@ -44,6 +44,7 @@ export const SESSION_SLOT_PERSISTENCE_ERROR = "Session slot state subscriber fai
 export const SESSION_LIST_PAYLOAD_TYPE = "sessions";
 export const SET_SLOT_SESSION_EVENT = "set-slot-session";
 export const REQUEST_SESSIONS_EVENT = "request-sessions";
+export const CLEAR_SLOT_EVENT = "clear-slot";
 
 export interface SessionSlotListEntry {
   readonly sessionId: string;
@@ -53,9 +54,9 @@ export interface SessionSlotListEntry {
   readonly title: string;
 }
 
-function isRequestSessionsPayload(payload: unknown): boolean {
+function isInspectorPayloadOfType(payload: unknown, type: string): boolean {
   if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return false;
-  return (payload as Record<string, unknown>).type === REQUEST_SESSIONS_EVENT;
+  return (payload as Record<string, unknown>).type === type;
 }
 
 function parseSetSlotSessionPayload(payload: unknown): string | undefined {
@@ -212,22 +213,31 @@ export class SessionSlotController {
   }
 
   async handleSendToPlugin(actionId: string, payload: unknown): Promise<void> {
-    if (isRequestSessionsPayload(payload)) {
+    if (isInspectorPayloadOfType(payload, REQUEST_SESSIONS_EVENT)) {
       // The push on appearance can outrun the page's own socket; answering a
       // request lets a page that lost that race fill its dropdown anyway.
       this.#propertyInspectorActionId = actionId;
       await this.#pushSessionList();
       return;
     }
-    const sessionId = parseSetSlotSessionPayload(payload);
-    if (sessionId === undefined) return;
     const visible = this.#visibleActions.get(actionId);
     if (visible === undefined) return;
+    const action = isInspectorPayloadOfType(payload, CLEAR_SLOT_EVENT)
+      ? { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: visible.slotIndex } as const
+      : this.#moveActionFor(payload, visible.slotIndex);
+    if (action === undefined) return;
     const prevState = this.#state;
-    this.#state = reduceSessionState(this.#state, { kind: SESSION_REDUCER_ACTION.MOVE_SESSION, sessionId, slotIndex: visible.slotIndex });
+    this.#state = reduceSessionState(this.#state, action);
     if (this.#state === prevState) return;
     await this.refresh(this.options.clock.now());
     this.#notifyStateChanged(prevState);
+    await this.#pushSessionList();
+  }
+
+  #moveActionFor(payload: unknown, slotIndex: number): { readonly kind: typeof SESSION_REDUCER_ACTION.MOVE_SESSION; readonly sessionId: string; readonly slotIndex: number } | undefined {
+    const sessionId = parseSetSlotSessionPayload(payload);
+    if (sessionId === undefined) return undefined;
+    return { kind: SESSION_REDUCER_ACTION.MOVE_SESSION, sessionId, slotIndex };
   }
 
   async refresh(now: number): Promise<void> {

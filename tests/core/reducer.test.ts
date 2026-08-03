@@ -250,6 +250,26 @@ describe("session status reducer", () => {
     expect(moved.slots[1]?.index).toBe(1);
   });
 
+  it("frees a slot on clear without disturbing the other slots", () => {
+    let state = apply(createSessionState(), event({ eventNumber: 1, sessionId: SESSION_IDS[0], tmuxPaneId: "%1" }));
+    state = apply(state, event({ eventNumber: 2, sessionId: SESSION_IDS[1], tmuxPaneId: "%2" }));
+
+    const cleared = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 0 });
+
+    expect(cleared).not.toBe(state);
+    expect(cleared.slots[0]).toEqual({ index: 0 });
+    expect(cleared.slots[1]?.sessionId).toBe(SESSION_IDS[1]);
+    expect(cleared.slots[1]?.target?.tmuxPaneId).toBe("%2");
+  });
+
+  it("treats clearing an empty or out-of-range slot as a no-op", () => {
+    const state = apply(createSessionState(), event({ sessionId: SESSION_IDS[0] }));
+
+    expect(reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 4 })).toBe(state);
+    expect(reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 9 })).toBe(state);
+    expect(reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: -1 })).toBe(state);
+  });
+
   it("treats unknown sessions, the current slot, and invalid slot indexes as no-ops", () => {
     const state = apply(createSessionState(), event({ sessionId: SESSION_IDS[0] }));
 

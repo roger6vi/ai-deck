@@ -7,6 +7,7 @@ export const SESSION_REDUCER_ACTION = {
   PHYSICAL_KEY_DOWN: "physical-key-down",
   PANE_MISSING: "pane-missing",
   MOVE_SESSION: "move-session",
+  CLEAR_SLOT: "clear-slot",
 } as const;
 
 export const SESSION_REDUCER_LIMITS = {
@@ -67,7 +68,12 @@ export interface MoveSessionAction {
   readonly slotIndex: number;
 }
 
-export type SessionReducerAction = SessionEventAction | PhysicalKeyDownAction | PaneMissingAction | MoveSessionAction;
+export interface ClearSlotAction {
+  readonly kind: typeof SESSION_REDUCER_ACTION.CLEAR_SLOT;
+  readonly slotIndex: number;
+}
+
+export type SessionReducerAction = SessionEventAction | PhysicalKeyDownAction | PaneMissingAction | MoveSessionAction | ClearSlotAction;
 
 function copyTarget(target: LocalAgentTargetMetadata): LocalAgentTargetMetadata {
   const copied = {
@@ -216,6 +222,17 @@ function reduceMoveSession(state: SessionState, action: MoveSessionAction): Sess
   return freezeState(slots, state.retiredSessions);
 }
 
+/**
+ * Frees a key without retiring its session: the session is simply no longer
+ * shown, and a later event assigns it to whichever slot is free.
+ */
+function reduceClearSlot(state: SessionState, action: ClearSlotAction): SessionState {
+  if (!Number.isInteger(action.slotIndex) || action.slotIndex < 0 || action.slotIndex >= state.slots.length) return state;
+  if (state.slots[action.slotIndex]?.sessionId === undefined) return state;
+  const slots = state.slots.map((slot) => slot.index === action.slotIndex ? { index: action.slotIndex } : slot);
+  return freezeState(slots, state.retiredSessions);
+}
+
 export function createSessionState(): SessionState {
   const slots = Array.from({ length: SESSION_REDUCER_LIMITS.SLOT_COUNT }, (_, index) => ({ index }));
   return freezeState(slots, []);
@@ -225,5 +242,6 @@ export function reduceSessionState(state: SessionState, action: SessionReducerAc
   if (action.kind === SESSION_REDUCER_ACTION.EVENT) return reduceEvent(state, action.event);
   if (action.kind === SESSION_REDUCER_ACTION.PANE_MISSING) return reducePaneMissing(state, action);
   if (action.kind === SESSION_REDUCER_ACTION.MOVE_SESSION) return reduceMoveSession(state, action);
+  if (action.kind === SESSION_REDUCER_ACTION.CLEAR_SLOT) return reduceClearSlot(state, action);
   return reducePhysicalKeyDown(state, action.slotIndex, action.sessionId, action.target, action.assignmentId);
 }

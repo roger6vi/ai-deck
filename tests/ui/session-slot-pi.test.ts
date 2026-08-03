@@ -24,6 +24,12 @@ describe("session slot property inspector page", () => {
     expect(onopen).toContain('"request-sessions"');
   });
 
+  it("offers an explicit way to leave the key unassigned", async () => {
+    const html = await readFile(PI_PATH, "utf8");
+    expect(html).toContain('"clear-slot"');
+    expect(html).toContain("None");
+  });
+
   it("renders sessions payloads and sends set-slot-session selections", async () => {
     const html = await readFile(PI_PATH, "utf8");
     expect(html).toContain('"sendToPropertyInspector"');
