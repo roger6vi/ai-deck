@@ -10,7 +10,7 @@ import {
 } from "../core/reducer";
 import { SESSION_SLOT_COLOR, SESSION_SLOT_SVG_PAINT, type SessionSlotColor } from "../core/colors";
 import { UUID_V4_PATTERN } from "../core/events";
-import { SESSION_STATUS, type LocalAgentStatusEvent } from "../core/types";
+import { SESSION_STATUS, type LocalAgentStatusEvent, type LocalAgentTargetMetadata } from "../core/types";
 import {
   NAVIGATION_OUTCOME,
   ghosttyTmuxNavigator,
@@ -40,6 +40,16 @@ type SessionSlotRenderResult = (typeof SESSION_SLOT_RENDER_RESULT)[keyof typeof 
 export const SESSION_SLOT_RENDER_RETRY_DELAY_MS = 50;
 export const SESSION_SLOT_RENDER_ERROR = "Session slot render failed.";
 export const SESSION_SLOT_NAVIGATION_ERROR = "Session slot navigation unavailable.";
+
+/**
+ * Every navigation outcome is recorded. Four defects in this project were
+ * invisible because a failure looked exactly like a success from the outside,
+ * and the boundary with tmux is where they all lived. Pane and window ids are
+ * not user content, so this stays inside the privacy boundary.
+ */
+export function navigationOutcomeMessage(outcome: string, target: LocalAgentTargetMetadata): string {
+  return `Session slot navigation ${outcome} for pane ${target.tmuxPaneId} in session ${target.tmuxSession}.`;
+}
 export const SESSION_SLOT_PERSISTENCE_ERROR = "Session slot state subscriber failed.";
 export const SESSION_LIST_PAYLOAD_TYPE = "sessions";
 export const SET_SLOT_SESSION_EVENT = "set-slot-session";
@@ -229,7 +239,7 @@ export class SessionSlotController {
     const visible = this.#visibleActions.get(actionId);
     if (visible === undefined) return;
     const action = isInspectorPayloadOfType(payload, CLEAR_SLOT_EVENT)
-      ? { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: visible.slotIndex } as const
+      ? { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: visible.slotIndex, byUser: true } as const
       : this.#moveActionFor(payload, visible.slotIndex);
     if (action === undefined) return;
     const prevState = this.#state;
@@ -266,6 +276,7 @@ export class SessionSlotController {
       this.#logNavigationFailure();
       return;
     }
+    try { this.options.logger.error(navigationOutcomeMessage(outcome, target)); } catch { /* observability must never break navigation */ }
     if (outcome === NAVIGATION_OUTCOME.UNAVAILABLE || outcome === NAVIGATION_OUTCOME.AMBIGUOUS) {
       // Both abort before a single tmux command runs. Acknowledging here would
       // tell the user they have seen a response they were never shown.

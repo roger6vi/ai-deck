@@ -43,7 +43,10 @@ export interface RetiredSession {
  * key must not destroy its session: the user decides what a key shows, so an
  * unassigned session stays selectable until its pane is gone.
  */
-export type UnassignedSession = Omit<SessionSlot, "index">;
+export type UnassignedSession = Omit<SessionSlot, "index"> & {
+  /** Set when the user took it off a key; the plugin then never puts it back on its own. */
+  readonly parkedByUser?: boolean;
+};
 
 export interface SessionState {
   readonly slots: readonly SessionSlot[];
@@ -81,6 +84,8 @@ export interface MoveSessionAction {
 export interface ClearSlotAction {
   readonly kind: typeof SESSION_REDUCER_ACTION.CLEAR_SLOT;
   readonly slotIndex: number;
+  /** True only when the user chose it in the inspector, which the plugin must not undo. */
+  readonly byUser?: boolean;
 }
 
 /** Narrows the unassigned set to the sessions a full pane enumeration proved alive. */
@@ -230,12 +235,21 @@ function reduceEvent(state: SessionState, event: LocalAgentStatusEvent): Session
       return freezeState(state.slots, addRetired(state.retiredSessions, event), withoutUnassigned(state.unassignedSessions, event.sessionId));
     }
     const updated = unassignedFromSlot(slotFromEvent(0, event, existing.assignmentId ?? event.eventId, existing.runningSince));
+    const freeForParked = state.slots.find((slot) => slot.sessionId === undefined);
+    if (existing.parkedByUser !== true && freeForParked !== undefined) {
+      // The plugin parked this one for want of a key, not the user; give it the
+      // key that just freed up.
+      const slots = state.slots.map((slot) => slot.index === freeForParked.index
+        ? { ...updated, index: freeForParked.index }
+        : slot);
+      return freezeState(slots, state.retiredSessions, withoutUnassigned(state.unassignedSessions, event.sessionId));
+    }
     // Reporting activity moves it to the freshest end of the bucket, so a
     // session still in use is never the one evicted.
     return freezeState(
       state.slots,
       state.retiredSessions,
-      [...withoutUnassigned(state.unassignedSessions, event.sessionId), updated],
+      [...withoutUnassigned(state.unassignedSessions, event.sessionId), { ...updated, ...(existing.parkedByUser === true ? { parkedByUser: true } : {}) }],
     );
   }
 
@@ -248,12 +262,17 @@ function reduceEvent(state: SessionState, event: LocalAgentStatusEvent): Session
     return state;
   }
 
-  const freeSlot = state.slots.find((slot) => slot.sessionId === undefined);
-  if (freeSlot === undefined) return state;
-  const slots = state.slots.map((slot) => slot.index === freeSlot.index ? slotFromEvent(slot.index, event, event.eventId) : slot);
   const retiredSessions = retired === undefined
     ? state.retiredSessions
     : state.retiredSessions.filter((session) => session.sessionId !== event.sessionId);
+  const freeSlot = state.slots.find((slot) => slot.sessionId === undefined);
+  if (freeSlot === undefined) {
+    // Every key is taken. Parking it keeps a running agent reachable through
+    // the inspector; dropping it would make the session permanently invisible.
+    const parked = unassignedFromSlot(slotFromEvent(0, event, event.eventId));
+    return freezeState(state.slots, retiredSessions, [...state.unassignedSessions, parked]);
+  }
+  const slots = state.slots.map((slot) => slot.index === freeSlot.index ? slotFromEvent(slot.index, event, event.eventId) : slot);
   return freezeState(slots, retiredSessions, state.unassignedSessions);
 }
 
@@ -312,7 +331,8 @@ function reduceClearSlot(state: SessionState, action: ClearSlotAction): SessionS
   const slot = state.slots[action.slotIndex];
   if (slot?.sessionId === undefined) return state;
   const slots = state.slots.map((current) => current.index === action.slotIndex ? { index: action.slotIndex } : current);
-  return freezeState(slots, state.retiredSessions, [...withoutUnassigned(state.unassignedSessions, slot.sessionId), unassignedFromSlot(slot)]);
+  const parked = { ...unassignedFromSlot(slot), ...(action.byUser === true ? { parkedByUser: true } : {}) };
+  return freezeState(slots, state.retiredSessions, [...withoutUnassigned(state.unassignedSessions, slot.sessionId), parked]);
 }
 
 /**
