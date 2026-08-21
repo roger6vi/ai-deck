@@ -186,6 +186,29 @@ describe("runAdapterEmit", () => {
   });
 });
 
+describe("event time", () => {
+  it("takes the timestamp the caller observed instead of its own start time", () => {
+    const parsed = parseAdapterEmitArgs([...VALID_ARGS, "--timestamp", "1700000000123"], CLOCK);
+
+    expect(parsed.kind).toBe("event");
+    // A long-lived adapter observes the event; this process starts tens of
+    // milliseconds later, and stamping here can order two events backwards.
+    expect(parsed.kind === "event" ? parsed.event.timestamp : undefined).toBe(1_700_000_000_123);
+  });
+
+  it("falls back to now when the caller did not observe one", () => {
+    const parsed = parseAdapterEmitArgs([...VALID_ARGS], CLOCK);
+
+    expect(parsed.kind === "event" ? parsed.event.timestamp : undefined).toBe(NOW);
+  });
+
+  it("rejects a timestamp that is not a plain non-negative integer", () => {
+    for (const bad of ["-1", "1.5", "abc", "", "1e3"]) {
+      expect(parseAdapterEmitArgs([...VALID_ARGS, "--timestamp", bad], CLOCK).kind).toBe("invalid");
+    }
+  });
+});
+
 describe("isDirectCliInvocation", () => {
   const moduleUrl = "file:///repo/src/cli/adapter-emit.ts";
 

@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { join } from "node:path";
 
 import {
-  deriveAdapterSessionId,
+  deriveOpenCodePaneSessionId,
   resolveAdapterEnvironment,
   type AdapterEnvironment,
 } from "./adapter-environment";
@@ -16,27 +16,48 @@ export interface OpenCodePluginHooks {
   readonly event: (input: { readonly event: OpenCodeEvent }) => Promise<void>;
 }
 
-export function createOpenCodePluginHooks(environment: AdapterEnvironment): OpenCodePluginHooks {
+export interface OpenCodeChild {
+  on(event: "error", listener: () => void): void;
+  unref(): void;
+}
+
+export type OpenCodeSpawn = (command: string, args: readonly string[], options: { readonly env: NodeJS.ProcessEnv; readonly stdio: "ignore" }) => OpenCodeChild;
+
+const productionSpawn: OpenCodeSpawn = (command, args, options) => spawn(command, [...args], options);
+
+export function createOpenCodePluginHooks(environment: AdapterEnvironment, spawnProcess: OpenCodeSpawn = productionSpawn): OpenCodePluginHooks {
+  /**
+   * The emit CLI stamps its timestamp inside the spawned child, and OpenCode
+   * ends a turn with `busy` and `idle` milliseconds apart. Node startup jitter
+   * alone can invert those two stamps, and the plugin then discards the later
+   * lifecycle as stale — leaving the key amber forever. A pane-level counter
+   * gives every native session of the pane one ordering that does not depend
+   * on process scheduling. After an adapter restart the counter resets, and
+   * the fresh event timestamp is what lets the deck advance again.
+   */
+  let sequence = 0;
   const tracker = new OpenCodeSessionTracker();
   const ready = environment.pluginRoot !== undefined && environment.paneId !== undefined && environment.tmuxSession !== undefined;
   return {
     async event({ event }) {
       if (!ready) return;
+      const observedAt = Date.now();
       const lifecycle = tracker.lifecycleFor(event);
       if (lifecycle === undefined) return;
       const pluginRoot = environment.pluginRoot;
       const paneId = environment.paneId;
       const tmuxSession = environment.tmuxSession;
       if (pluginRoot === undefined || paneId === undefined || tmuxSession === undefined) return;
-      const sessionId = event.properties?.sessionID;
-      if (sessionId === undefined) return;
-      const child = spawn(environment.nodeBinary, [
+      sequence += 1;
+      const child = spawnProcess(environment.nodeBinary, [
         join(pluginRoot, "bin", "adapter-emit.js"),
         "--source", OPENCODE_ADAPTER_SOURCE,
-        "--session-id", deriveAdapterSessionId(sessionId),
+        "--session-id", deriveOpenCodePaneSessionId(tmuxSession, paneId),
         "--lifecycle", lifecycle,
         "--pane-id", paneId,
         "--session", tmuxSession,
+        "--sequence", String(sequence),
+        "--timestamp", String(observedAt),
       ], { env: { ...process.env, AI_DECK_PLUGIN_ROOT: pluginRoot }, stdio: "ignore" });
       child.on("error", () => undefined);
       child.unref();

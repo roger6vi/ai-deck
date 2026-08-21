@@ -1,4 +1,4 @@
-import { SESSION_STATUS, type LocalAgentStatusEvent, type LocalAgentTargetMetadata } from "./types";
+import { LOCAL_AGENT_TOOL, SESSION_STATUS, type LocalAgentStatusEvent, type LocalAgentTargetMetadata } from "./types";
 
 export { deriveSlotColor, SESSION_SLOT_COLOR } from "./colors";
 
@@ -8,11 +8,13 @@ export const SESSION_REDUCER_ACTION = {
   PANE_MISSING: "pane-missing",
   MOVE_SESSION: "move-session",
   CLEAR_SLOT: "clear-slot",
+  RETAIN_UNASSIGNED: "retain-unassigned",
 } as const;
 
 export const SESSION_REDUCER_LIMITS = {
   SLOT_COUNT: 5,
   RETIRED_SESSION_LIMIT: 16,
+  UNASSIGNED_SESSION_LIMIT: 16,
 } as const;
 
 export interface SessionSlot {
@@ -36,8 +38,19 @@ export interface RetiredSession {
   readonly lastSequence?: number;
 }
 
+/**
+ * A session the plugin knows about that currently sits on no key. Clearing a
+ * key must not destroy its session: the user decides what a key shows, so an
+ * unassigned session stays selectable until its pane is gone.
+ */
+export type UnassignedSession = Omit<SessionSlot, "index"> & {
+  /** Set when the user took it off a key; the plugin then never puts it back on its own. */
+  readonly parkedByUser?: boolean;
+};
+
 export interface SessionState {
   readonly slots: readonly SessionSlot[];
+  readonly unassignedSessions: readonly UnassignedSession[];
   readonly retiredSessions: readonly RetiredSession[];
 }
 
@@ -71,9 +84,17 @@ export interface MoveSessionAction {
 export interface ClearSlotAction {
   readonly kind: typeof SESSION_REDUCER_ACTION.CLEAR_SLOT;
   readonly slotIndex: number;
+  /** True only when the user chose it in the inspector, which the plugin must not undo. */
+  readonly byUser?: boolean;
 }
 
-export type SessionReducerAction = SessionEventAction | PhysicalKeyDownAction | PaneMissingAction | MoveSessionAction | ClearSlotAction;
+/** Narrows the unassigned set to the sessions a full pane enumeration proved alive. */
+export interface RetainUnassignedAction {
+  readonly kind: typeof SESSION_REDUCER_ACTION.RETAIN_UNASSIGNED;
+  readonly sessions: readonly UnassignedSession[];
+}
+
+export type SessionReducerAction = SessionEventAction | PhysicalKeyDownAction | PaneMissingAction | MoveSessionAction | ClearSlotAction | RetainUnassignedAction;
 
 function copyTarget(target: LocalAgentTargetMetadata): LocalAgentTargetMetadata {
   const copied = {
@@ -84,11 +105,45 @@ function copyTarget(target: LocalAgentTargetMetadata): LocalAgentTargetMetadata 
   return Object.freeze(target.tmuxWindow === undefined ? copied : { ...copied, tmuxWindow: target.tmuxWindow });
 }
 
-function freezeState(slots: readonly SessionSlot[], retiredSessions: readonly RetiredSession[]): SessionState {
+/**
+ * Bounds the unassigned bucket without losing anything: whatever no longer
+ * fits is retired, which is what keeps the resurrection guard in `reduceEvent`
+ * able to recognise it. The bucket is ordered least-recently-active first, so
+ * eviction takes the stalest session rather than the first one ever added.
+ */
+function boundUnassigned(
+  unassignedSessions: readonly UnassignedSession[],
+  retiredSessions: readonly RetiredSession[],
+): { readonly unassigned: readonly UnassignedSession[]; readonly retired: readonly RetiredSession[] } {
+  const overflow = unassignedSessions.length - SESSION_REDUCER_LIMITS.UNASSIGNED_SESSION_LIMIT;
+  if (overflow <= 0) return { unassigned: unassignedSessions, retired: retiredSessions };
+  let retired = retiredSessions;
+  for (const evicted of unassignedSessions.slice(0, overflow)) {
+    retired = addRetiredSession(retired, evicted);
+  }
+  return { unassigned: unassignedSessions.slice(overflow), retired };
+}
+
+function freezeState(
+  slots: readonly SessionSlot[],
+  retiredSessions: readonly RetiredSession[],
+  unassignedSessions: readonly UnassignedSession[],
+): SessionState {
+  const bounded = boundUnassigned(unassignedSessions, retiredSessions);
   return Object.freeze({
     slots: Object.freeze(slots.map((slot) => Object.freeze({ ...slot }))),
-    retiredSessions: Object.freeze(retiredSessions.map((session) => Object.freeze({ ...session }))),
+    unassignedSessions: Object.freeze(bounded.unassigned.map((session) => Object.freeze({ ...session }))),
+    retiredSessions: Object.freeze(bounded.retired.map((session) => Object.freeze({ ...session }))),
   });
+}
+
+function withoutUnassigned(unassignedSessions: readonly UnassignedSession[], sessionId: string): readonly UnassignedSession[] {
+  return unassignedSessions.filter((session) => session.sessionId !== sessionId);
+}
+
+function unassignedFromSlot(slot: SessionSlot): UnassignedSession {
+  const { index: _index, ...session } = slot;
+  return session;
 }
 
 function isNewer(lastTimestamp: number, lastSequence: number | undefined, event: LocalAgentStatusEvent): boolean {
@@ -137,7 +192,7 @@ function addRetired(retiredSessions: readonly RetiredSession[], event: LocalAgen
     .slice(-SESSION_REDUCER_LIMITS.RETIRED_SESSION_LIMIT);
 }
 
-function addRetiredSlot(retiredSessions: readonly RetiredSession[], slot: SessionSlot): readonly RetiredSession[] {
+function addRetiredSession(retiredSessions: readonly RetiredSession[], slot: UnassignedSession): readonly RetiredSession[] {
   if (slot.sessionId === undefined || slot.lastEventId === undefined || slot.lastTimestamp === undefined) return retiredSessions;
   const retired: RetiredSession = {
     sessionId: slot.sessionId,
@@ -153,7 +208,46 @@ function matchesAssignment(slot: SessionSlot | undefined, sessionId: string, tar
   return slot?.sessionId === sessionId && slot.assignmentId === assignmentId && slot.target?.tmuxPaneId === target.tmuxPaneId && slot.target.tmuxSession === target.tmuxSession && slot.target.tmuxWindow === target.tmuxWindow && slot.target.ghosttyBundleId === target.ghosttyBundleId;
 }
 
+/**
+ * OpenCode reports one deck entry per tmux pane. Adapters installed before
+ * that contract persisted one entry per native session, so a pane could hold
+ * several stale generations of itself. The next canonical event for the pane
+ * retires every other OpenCode entry sharing its tmux session and pane —
+ * assigned or parked — so the old records disappear instead of lingering as
+ * lookalikes. Other tools and other panes are never touched; dedupe by
+ * identity, never by title.
+ */
+function convergeOpenCodePane(state: SessionState, event: LocalAgentStatusEvent): SessionState {
+  // The event may only replace generations it is newer than; a late stale
+  // event from a replaced generation must never destroy the canonical entry.
+  const isLegacyEntry = (sessionId: string | undefined, source: LocalAgentStatusEvent["source"] | undefined, target: LocalAgentTargetMetadata | undefined, lastTimestamp: number | undefined, lastSequence: number | undefined): boolean =>
+    sessionId !== undefined && sessionId !== event.sessionId && source === LOCAL_AGENT_TOOL.OPENCODE &&
+    target !== undefined && target.tmuxSession === event.target.tmuxSession && target.tmuxPaneId === event.target.tmuxPaneId &&
+    (lastTimestamp === undefined || isNewer(lastTimestamp, lastSequence, event));
+  let retired = state.retiredSessions;
+  let changed = false;
+  const slots = state.slots.map((slot) => {
+    if (!isLegacyEntry(slot.sessionId, slot.source, slot.target, slot.lastTimestamp, slot.lastSequence)) return slot;
+    changed = true;
+    retired = addRetiredSession(retired, unassignedFromSlot(slot));
+    return { index: slot.index };
+  });
+  const unassigned: UnassignedSession[] = [];
+  for (const session of state.unassignedSessions) {
+    if (!isLegacyEntry(session.sessionId, session.source, session.target, session.lastTimestamp, session.lastSequence)) {
+      unassigned.push(session);
+      continue;
+    }
+    changed = true;
+    retired = addRetiredSession(retired, session);
+  }
+  return changed ? freezeState(slots, retired, unassigned) : state;
+}
+
 function reduceEvent(state: SessionState, event: LocalAgentStatusEvent): SessionState {
+  if (event.source === LOCAL_AGENT_TOOL.OPENCODE) {
+    state = convergeOpenCodePane(state, event);
+  }
   const slotIndex = state.slots.findIndex((slot) => slot.sessionId === event.sessionId);
   if (slotIndex >= 0) {
     const slot = state.slots[slotIndex];
@@ -162,10 +256,40 @@ function reduceEvent(state: SessionState, event: LocalAgentStatusEvent): Session
     }
     if (event.lifecycle === SESSION_STATUS.PANE_DISAPPEARED) {
       const slots = state.slots.map((current) => current.index === slotIndex ? { index: slotIndex } : current);
-      return freezeState(slots, addRetired(state.retiredSessions, event));
+      return freezeState(slots, addRetired(state.retiredSessions, event), state.unassignedSessions);
     }
     const slots = state.slots.map((current) => current.index === slotIndex ? slotFromEvent(slotIndex, event, slot.assignmentId ?? event.eventId, slot.runningSince) : current);
-    return freezeState(slots, state.retiredSessions);
+    return freezeState(slots, state.retiredSessions, state.unassignedSessions);
+  }
+
+  const unassignedIndex = state.unassignedSessions.findIndex((session) => session.sessionId === event.sessionId);
+  if (unassignedIndex >= 0) {
+    // The user took this session off its key. Keep honouring that: report the
+    // new lifecycle, but never drag it back onto a key on its own.
+    const existing = state.unassignedSessions[unassignedIndex];
+    if (existing === undefined || isDuplicateOrStale(existing.lastEventId ?? "", existing.lastTimestamp, existing.lastSequence, event)) {
+      return state;
+    }
+    if (event.lifecycle === SESSION_STATUS.PANE_DISAPPEARED) {
+      return freezeState(state.slots, addRetired(state.retiredSessions, event), withoutUnassigned(state.unassignedSessions, event.sessionId));
+    }
+    const updated = unassignedFromSlot(slotFromEvent(0, event, existing.assignmentId ?? event.eventId, existing.runningSince));
+    const freeForParked = state.slots.find((slot) => slot.sessionId === undefined);
+    if (existing.parkedByUser !== true && freeForParked !== undefined) {
+      // The plugin parked this one for want of a key, not the user; give it the
+      // key that just freed up.
+      const slots = state.slots.map((slot) => slot.index === freeForParked.index
+        ? { ...updated, index: freeForParked.index }
+        : slot);
+      return freezeState(slots, state.retiredSessions, withoutUnassigned(state.unassignedSessions, event.sessionId));
+    }
+    // Reporting activity moves it to the freshest end of the bucket, so a
+    // session still in use is never the one evicted.
+    return freezeState(
+      state.slots,
+      state.retiredSessions,
+      [...withoutUnassigned(state.unassignedSessions, event.sessionId), { ...updated, ...(existing.parkedByUser === true ? { parkedByUser: true } : {}) }],
+    );
   }
 
   const retired = state.retiredSessions.find((session) => session.sessionId === event.sessionId);
@@ -177,13 +301,18 @@ function reduceEvent(state: SessionState, event: LocalAgentStatusEvent): Session
     return state;
   }
 
-  const freeSlot = state.slots.find((slot) => slot.sessionId === undefined);
-  if (freeSlot === undefined) return state;
-  const slots = state.slots.map((slot) => slot.index === freeSlot.index ? slotFromEvent(slot.index, event, event.eventId) : slot);
   const retiredSessions = retired === undefined
     ? state.retiredSessions
     : state.retiredSessions.filter((session) => session.sessionId !== event.sessionId);
-  return freezeState(slots, retiredSessions);
+  const freeSlot = state.slots.find((slot) => slot.sessionId === undefined);
+  if (freeSlot === undefined) {
+    // Every key is taken. Parking it keeps a running agent reachable through
+    // the inspector; dropping it would make the session permanently invisible.
+    const parked = unassignedFromSlot(slotFromEvent(0, event, event.eventId));
+    return freezeState(state.slots, retiredSessions, [...state.unassignedSessions, parked]);
+  }
+  const slots = state.slots.map((slot) => slot.index === freeSlot.index ? slotFromEvent(slot.index, event, event.eventId) : slot);
+  return freezeState(slots, retiredSessions, state.unassignedSessions);
 }
 
 function reducePhysicalKeyDown(
@@ -197,45 +326,71 @@ function reducePhysicalKeyDown(
   if ((sessionId !== undefined || target !== undefined || assignmentId !== undefined) && (sessionId === undefined || target === undefined || assignmentId === undefined || !matchesAssignment(slot, sessionId, target, assignmentId))) return state;
   if (slot?.lifecycle !== SESSION_STATUS.COMPLETED || slot.acknowledged) return state;
   const slots = state.slots.map((current) => current.index === slotIndex ? { ...current, acknowledged: true } : current);
-  return freezeState(slots, state.retiredSessions);
+  return freezeState(slots, state.retiredSessions, state.unassignedSessions);
 }
 
 function reducePaneMissing(state: SessionState, action: PaneMissingAction): SessionState {
   const slot = state.slots[action.slotIndex];
   if (slot === undefined || !matchesAssignment(slot, action.sessionId, action.target, action.assignmentId)) return state;
   const slots = state.slots.map((current) => current.index === action.slotIndex ? { index: current.index } : current);
-  return freezeState(slots, addRetiredSlot(state.retiredSessions, slot));
+  return freezeState(slots, addRetiredSession(state.retiredSessions, slot), state.unassignedSessions);
 }
 
 function reduceMoveSession(state: SessionState, action: MoveSessionAction): SessionState {
   if (!Number.isInteger(action.slotIndex) || action.slotIndex < 0 || action.slotIndex >= state.slots.length) return state;
-  const fromIndex = state.slots.findIndex((slot) => slot.sessionId === action.sessionId);
-  if (fromIndex < 0 || fromIndex === action.slotIndex) return state;
-  const from = state.slots[fromIndex];
   const to = state.slots[action.slotIndex];
-  if (from === undefined || to === undefined) return state;
-  const slots = state.slots.map((slot) => {
-    if (slot.index === fromIndex) return { ...to, index: fromIndex };
-    if (slot.index === action.slotIndex) return { ...from, index: action.slotIndex };
-    return slot;
-  });
-  return freezeState(slots, state.retiredSessions);
+  if (to === undefined) return state;
+  const fromIndex = state.slots.findIndex((slot) => slot.sessionId === action.sessionId);
+  if (fromIndex >= 0) {
+    if (fromIndex === action.slotIndex) return state;
+    const from = state.slots[fromIndex];
+    if (from === undefined) return state;
+    const slots = state.slots.map((slot) => {
+      if (slot.index === fromIndex) return { ...to, index: fromIndex };
+      if (slot.index === action.slotIndex) return { ...from, index: action.slotIndex };
+      return slot;
+    });
+    return freezeState(slots, state.retiredSessions, state.unassignedSessions);
+  }
+
+  const unassigned = state.unassignedSessions.find((session) => session.sessionId === action.sessionId);
+  if (unassigned === undefined) return state;
+  const slots = state.slots.map((slot) => slot.index === action.slotIndex ? { ...unassigned, index: action.slotIndex } : slot);
+  const displaced = to.sessionId === undefined ? [] : [unassignedFromSlot(to)];
+  return freezeState(slots, state.retiredSessions, [...withoutUnassigned(state.unassignedSessions, action.sessionId), ...displaced]);
 }
 
 /**
- * Frees a key without retiring its session: the session is simply no longer
- * shown, and a later event assigns it to whichever slot is free.
+ * Frees a key without forgetting its session. The session stays known and
+ * selectable so the user can put it back on any key; only a vanished pane
+ * removes it for good.
  */
 function reduceClearSlot(state: SessionState, action: ClearSlotAction): SessionState {
   if (!Number.isInteger(action.slotIndex) || action.slotIndex < 0 || action.slotIndex >= state.slots.length) return state;
-  if (state.slots[action.slotIndex]?.sessionId === undefined) return state;
-  const slots = state.slots.map((slot) => slot.index === action.slotIndex ? { index: action.slotIndex } : slot);
-  return freezeState(slots, state.retiredSessions);
+  const slot = state.slots[action.slotIndex];
+  if (slot?.sessionId === undefined) return state;
+  const slots = state.slots.map((current) => current.index === action.slotIndex ? { index: action.slotIndex } : current);
+  const parked = { ...unassignedFromSlot(slot), ...(action.byUser === true ? { parkedByUser: true } : {}) };
+  return freezeState(slots, state.retiredSessions, [...withoutUnassigned(state.unassignedSessions, slot.sessionId), parked]);
+}
+
+/**
+ * Drops the unassigned sessions a full pane enumeration did not find, retiring
+ * each one. The slot path retires on the same evidence, and both deaths have to
+ * gate re-entry the same way or a late event could hand a dead session a key.
+ */
+function reduceRetainUnassigned(state: SessionState, action: RetainUnassignedAction): SessionState {
+  const survivors = new Set(action.sessions.map((session) => session.sessionId));
+  let retired = state.retiredSessions;
+  for (const session of state.unassignedSessions) {
+    if (!survivors.has(session.sessionId)) retired = addRetiredSession(retired, session);
+  }
+  return freezeState(state.slots, retired, action.sessions);
 }
 
 export function createSessionState(): SessionState {
   const slots = Array.from({ length: SESSION_REDUCER_LIMITS.SLOT_COUNT }, (_, index) => ({ index }));
-  return freezeState(slots, []);
+  return freezeState(slots, [], []);
 }
 
 export function reduceSessionState(state: SessionState, action: SessionReducerAction): SessionState {
@@ -243,5 +398,6 @@ export function reduceSessionState(state: SessionState, action: SessionReducerAc
   if (action.kind === SESSION_REDUCER_ACTION.PANE_MISSING) return reducePaneMissing(state, action);
   if (action.kind === SESSION_REDUCER_ACTION.MOVE_SESSION) return reduceMoveSession(state, action);
   if (action.kind === SESSION_REDUCER_ACTION.CLEAR_SLOT) return reduceClearSlot(state, action);
+  if (action.kind === SESSION_REDUCER_ACTION.RETAIN_UNASSIGNED) return reduceRetainUnassigned(state, action);
   return reducePhysicalKeyDown(state, action.slotIndex, action.sessionId, action.target, action.assignmentId);
 }

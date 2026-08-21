@@ -5,9 +5,10 @@ import { describe, expect, it } from "vitest";
 const PI_PATH = "com.gentleman.ai-deck.sdPlugin/ui/session-slot.html";
 
 describe("session slot property inspector page", () => {
-  it("is a self-contained page with a session dropdown", async () => {
+  it("is a self-contained page listing the choices without a native popup", async () => {
     const html = await readFile(PI_PATH, "utf8");
-    expect(html).toContain('<select id="session"');
+    expect(html).toContain('<div id="sessions" role="listbox"');
+    expect(html).not.toContain("<select");
     expect(html).not.toMatch(/src="https?:|href="https?:/);
   });
 
@@ -28,6 +29,12 @@ describe("session slot property inspector page", () => {
     const html = await readFile(PI_PATH, "utf8");
     expect(html).toContain('"clear-slot"');
     expect(html).toContain("None");
+  });
+
+  it("tells the user where each session currently sits, including nowhere", async () => {
+    const html = await readFile(PI_PATH, "utf8");
+    expect(html).toContain("unassigned");
+    expect(html).toContain("session.slotIndex === undefined");
   });
 
   it("renders sessions payloads and sends set-slot-session selections", async () => {

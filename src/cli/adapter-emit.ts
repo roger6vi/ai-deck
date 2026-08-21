@@ -24,7 +24,7 @@ export const ADAPTER_EMIT_OUTCOME_MESSAGE = {
   LOCAL_ERROR: "ai-deck: local-error",
 } as const;
 
-const USAGE = "usage: ai-deck-emit --source <codex|opencode|claude> --session-id <uuid> --lifecycle <started|running|completed|error|pane-disappeared> --pane-id %<N> --session $<N> [--event-id <uuid>] [--window @<N>] [--sequence <n>]";
+const USAGE = "usage: ai-deck-emit --source <codex|opencode|claude> --session-id <uuid> --lifecycle <started|running|completed|error|pane-disappeared> --pane-id %<N> --session $<N> [--event-id <uuid>] [--window @<N>] [--sequence <n>] [--timestamp <ms>]";
 
 export const ADAPTER_EMIT_PLUGIN_ROOT_MISSING_MESSAGE = "ai-deck: AI_DECK_PLUGIN_ROOT is not set";
 
@@ -37,6 +37,7 @@ const ALLOWED_FLAGS = new Set([
   "--session",
   "--window",
   "--sequence",
+  "--timestamp",
 ]);
 const REQUIRED_FLAGS = ["--source", "--session-id", "--lifecycle", "--pane-id", "--session"] as const;
 
@@ -89,6 +90,10 @@ export function parseAdapterEmitArgs(argv: readonly string[], clock: AdapterEmit
   const eventId = flags.get("--event-id") ?? randomUUID();
   const sequenceParsed = parseSequence(flags.get("--sequence"));
   if (sequenceParsed === "invalid") return { kind: "invalid", reason: USAGE };
+  // A long-lived adapter observes the event; this process starts tens of
+  // milliseconds later, so its own clock can order two events backwards.
+  const timestampParsed = parseSequence(flags.get("--timestamp"));
+  if (timestampParsed === "invalid") return { kind: "invalid", reason: USAGE };
   const target: Record<string, unknown> = {
     tmuxPaneId: flags.get("--pane-id"),
     tmuxSession: flags.get("--session"),
@@ -101,7 +106,7 @@ export function parseAdapterEmitArgs(argv: readonly string[], clock: AdapterEmit
     eventId,
     source: flags.get("--source"),
     sessionId: flags.get("--session-id"),
-    timestamp: clock.now(),
+    timestamp: timestampParsed ?? clock.now(),
     lifecycle: flags.get("--lifecycle"),
     target,
   };

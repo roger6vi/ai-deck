@@ -41,10 +41,29 @@ describe("OpenCodeSessionTracker", () => {
     expect(tracker.lifecycleFor({ type: "session.status", properties: { sessionID: "ses_1", status: { type: "idle" } } })).toBeUndefined();
   });
 
-  it("tracks sessions independently", () => {
+  it("aggregates native sessions of one pane: a child joins as running and its idle never completes the pane", () => {
+    const tracker = new OpenCodeSessionTracker();
+    expect(tracker.lifecycleFor({ type: "session.status", properties: { sessionID: "ses_root", status: { type: "busy" } } })).toBe("started");
+    expect(tracker.lifecycleFor({ type: "session.status", properties: { sessionID: "ses_child", status: { type: "busy" } } })).toBe("running");
+    // The child finished, but the root still works: the pane must stay amber.
+    expect(tracker.lifecycleFor({ type: "session.idle", properties: { sessionID: "ses_child" } })).toBe("running");
+    expect(tracker.lifecycleFor({ type: "session.idle", properties: { sessionID: "ses_root" } })).toBe("completed");
+  });
+
+  it("keeps the pane running when one child errors while another native session is active", () => {
+    const tracker = new OpenCodeSessionTracker();
+    tracker.lifecycleFor({ type: "session.status", properties: { sessionID: "ses_root", status: { type: "busy" } } });
+    tracker.lifecycleFor({ type: "session.status", properties: { sessionID: "ses_child", status: { type: "busy" } } });
+    expect(tracker.lifecycleFor({ type: "session.error", properties: { sessionID: "ses_child" } })).toBe("running");
+    expect(tracker.lifecycleFor({ type: "session.error", properties: { sessionID: "ses_root" } })).toBe("error");
+  });
+
+  it("counts every native session of the pane as one workload instead of independent entries", () => {
     const tracker = new OpenCodeSessionTracker();
     expect(tracker.lifecycleFor({ type: "session.status", properties: { sessionID: "ses_1", status: { type: "busy" } } })).toBe("started");
-    expect(tracker.lifecycleFor({ type: "session.status", properties: { sessionID: "ses_2", status: { type: "busy" } } })).toBe("started");
+    expect(tracker.lifecycleFor({ type: "session.status", properties: { sessionID: "ses_2", status: { type: "busy" } } })).toBe("running");
     expect(tracker.lifecycleFor({ type: "session.status", properties: { sessionID: "ses_1", status: { type: "busy" } } })).toBe("running");
+    expect(tracker.lifecycleFor({ type: "session.idle", properties: { sessionID: "ses_2" } })).toBe("running");
+    expect(tracker.lifecycleFor({ type: "session.idle", properties: { sessionID: "ses_1" } })).toBe("completed");
   });
 });

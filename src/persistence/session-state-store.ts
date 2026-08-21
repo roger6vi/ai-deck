@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { createSessionState, SESSION_REDUCER_LIMITS, type RetiredSession, type SessionSlot, type SessionState } from "../core/reducer";
+import { createSessionState, SESSION_REDUCER_LIMITS, type RetiredSession, type SessionSlot, type SessionState, type UnassignedSession } from "../core/reducer";
 import { LOCAL_AGENT_TOOL, SESSION_STATUS, type LocalAgentStatusEvent, type LocalAgentTargetMetadata, type LocalAgentTool, type SessionStatus } from "../core/types";
 
 export const SESSION_STATE_STORE_SCHEMA_VERSION = 1 as const;
@@ -24,7 +24,7 @@ const TMUX_WINDOW_PATTERN = /^@\d{1,20}$/;
 const GHOSTTY_BUNDLE_ID = "com.mitchellh.ghostty";
 const PERSISTENCE_WRITE_FAILURE = "Session persistence write failed.";
 
-const ENVELOPE_FIELDS = ["schemaVersion", "slots", "retiredSessions"] as const;
+const ENVELOPE_FIELDS = ["schemaVersion", "slots", "unassignedSessions", "retiredSessions"] as const;
 const SLOT_ALLOWED_FIELDS = [
   "index",
   "assignmentId",
@@ -40,6 +40,7 @@ const SLOT_ALLOWED_FIELDS = [
 ] as const;
 const TARGET_ALLOWED_FIELDS = ["tmuxPaneId", "tmuxSession", "tmuxWindow", "ghosttyBundleId"] as const;
 const RETIRED_ALLOWED_FIELDS = ["sessionId", "lastEventId", "lastTimestamp", "lastSequence"] as const;
+const UNASSIGNED_ALLOWED_FIELDS = SLOT_ALLOWED_FIELDS.filter((field) => field !== "index");
 
 export interface SessionStateStoreFilesystem {
   readFile(path: string): Promise<string>;
@@ -104,15 +105,7 @@ function parseTarget(value: unknown): LocalAgentTargetMetadata | undefined {
   return Object.freeze({ tmuxPaneId, tmuxSession, ghosttyBundleId });
 }
 
-function parseSlot(value: unknown, seenIndexes: Set<number>): SessionSlot | undefined {
-  if (!isRecord(value) || !hasOnlyFields(value, SLOT_ALLOWED_FIELDS)) return undefined;
-  const { index } = value;
-  if (typeof index !== "number" || !Number.isSafeInteger(index) || index < 0 || index >= SESSION_REDUCER_LIMITS.SLOT_COUNT) return undefined;
-  if (seenIndexes.has(index)) return undefined;
-  seenIndexes.add(index);
-
-  const slot: Record<string, unknown> = { index };
-
+function parseSessionFields(value: Record<string, unknown>, slot: Record<string, unknown>): Record<string, unknown> | undefined {
   if ("assignmentId" in value) { if (!isUuid(value.assignmentId)) return undefined; slot.assignmentId = value.assignmentId; }
   if ("sessionId" in value) { if (!isUuid(value.sessionId)) return undefined; slot.sessionId = value.sessionId; }
   if ("source" in value) { if (!isTool(value.source)) return undefined; slot.source = value.source; }
@@ -124,7 +117,24 @@ function parseSlot(value: unknown, seenIndexes: Set<number>): SessionSlot | unde
   if ("lastTimestamp" in value) { if (!isBoundedInteger(value.lastTimestamp)) return undefined; slot.lastTimestamp = value.lastTimestamp; }
   if ("lastSequence" in value) { if (!isBoundedInteger(value.lastSequence)) return undefined; slot.lastSequence = value.lastSequence; }
 
-  return Object.freeze(slot) as unknown as SessionSlot;
+  return slot;
+}
+
+function parseSlot(value: unknown, seenIndexes: Set<number>): SessionSlot | undefined {
+  if (!isRecord(value) || !hasOnlyFields(value, SLOT_ALLOWED_FIELDS)) return undefined;
+  const { index } = value;
+  if (typeof index !== "number" || !Number.isSafeInteger(index) || index < 0 || index >= SESSION_REDUCER_LIMITS.SLOT_COUNT) return undefined;
+  if (seenIndexes.has(index)) return undefined;
+  seenIndexes.add(index);
+  const slot = parseSessionFields(value, { index });
+  return slot === undefined ? undefined : Object.freeze(slot) as unknown as SessionSlot;
+}
+
+function parseUnassignedSession(value: unknown): UnassignedSession | undefined {
+  if (!isRecord(value) || !hasOnlyFields(value, UNASSIGNED_ALLOWED_FIELDS)) return undefined;
+  if (!isUuid(value.sessionId)) return undefined;
+  const session = parseSessionFields(value, {});
+  return session === undefined ? undefined : Object.freeze(session) as unknown as UnassignedSession;
 }
 
 function parseRetiredSession(value: unknown): RetiredSession | undefined {
@@ -136,9 +146,7 @@ function parseRetiredSession(value: unknown): RetiredSession | undefined {
   return Object.freeze(retired) as unknown as RetiredSession;
 }
 
-export function serializeSessionState(state: SessionState): string {
-  const slots = state.slots.map((slot) => {
-    const record: Record<string, unknown> = { index: slot.index };
+function sessionRecord(slot: UnassignedSession, record: Record<string, unknown>): Record<string, unknown> {
     if (slot.assignmentId !== undefined) record.assignmentId = slot.assignmentId;
     if (slot.sessionId !== undefined) record.sessionId = slot.sessionId;
     if (slot.source !== undefined) record.source = slot.source;
@@ -158,7 +166,11 @@ export function serializeSessionState(state: SessionState): string {
     if (slot.lastTimestamp !== undefined) record.lastTimestamp = slot.lastTimestamp;
     if (slot.lastSequence !== undefined) record.lastSequence = slot.lastSequence;
     return record;
-  });
+}
+
+export function serializeSessionState(state: SessionState): string {
+  const slots = state.slots.map((slot) => sessionRecord(slot, { index: slot.index }));
+  const unassignedSessions = state.unassignedSessions.map((session) => sessionRecord(session, {}));
   const retiredSessions = state.retiredSessions.map((session) => {
     const record: Record<string, unknown> = {
       sessionId: session.sessionId,
@@ -171,6 +183,7 @@ export function serializeSessionState(state: SessionState): string {
   return JSON.stringify({
     schemaVersion: SESSION_STATE_STORE_SCHEMA_VERSION,
     slots,
+    unassignedSessions,
     retiredSessions,
   });
 }
@@ -181,9 +194,12 @@ export function parseSessionState(contents: string): SessionState | undefined {
   try { value = JSON.parse(contents); } catch { return undefined; }
   if (!isRecord(value) || !hasOnlyFields(value, ENVELOPE_FIELDS)) return undefined;
   const { schemaVersion, slots, retiredSessions } = value;
+  // A state file written before unassigned sessions existed simply has none.
+  const unassignedSessions = "unassignedSessions" in value ? value.unassignedSessions : [];
   if (schemaVersion !== SESSION_STATE_STORE_SCHEMA_VERSION) return undefined;
   if (!Array.isArray(slots) || slots.length !== SESSION_REDUCER_LIMITS.SLOT_COUNT) return undefined;
   if (!Array.isArray(retiredSessions) || retiredSessions.length > SESSION_REDUCER_LIMITS.RETIRED_SESSION_LIMIT) return undefined;
+  if (!Array.isArray(unassignedSessions) || unassignedSessions.length > SESSION_REDUCER_LIMITS.UNASSIGNED_SESSION_LIMIT) return undefined;
 
   const seen = new Set<number>();
   const parsedSlots: SessionSlot[] = [];
@@ -201,8 +217,16 @@ export function parseSessionState(contents: string): SessionState | undefined {
     parsedRetired.push(retired);
   }
 
+  const parsedUnassigned: UnassignedSession[] = [];
+  for (const entry of unassignedSessions) {
+    const session = parseUnassignedSession(entry);
+    if (session === undefined) return undefined;
+    parsedUnassigned.push(session);
+  }
+
   return Object.freeze({
     slots: Object.freeze(parsedSlots) as readonly SessionSlot[],
+    unassignedSessions: Object.freeze(parsedUnassigned) as readonly UnassignedSession[],
     retiredSessions: Object.freeze(parsedRetired) as readonly RetiredSession[],
   });
 }

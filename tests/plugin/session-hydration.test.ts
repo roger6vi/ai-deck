@@ -11,7 +11,7 @@ import { SessionSlotController } from "../../src/plugin/session-slot-controller"
 
 const CLOCK = { now: () => 0 };
 const SCHEDULER = { schedule: () => 0, cancel: () => undefined };
-const LOGGER = { error: () => undefined };
+const LOGGER = { error: () => undefined, info: () => undefined };
 
 function baseEvent(overrides: Partial<LocalAgentStatusEvent> = {}): LocalAgentStatusEvent {
   return {
@@ -106,7 +106,7 @@ describe("session slot controller hydration", () => {
     const controller = new SessionSlotController({
       clock: CLOCK,
       scheduler: SCHEDULER,
-      logger: { error: (message) => errors.push(message) },
+      logger: { error: (message) => errors.push(message), info: () => undefined },
     });
     controller.subscribeToStateChanges(() => { throw new Error("persistence exploded"); });
 

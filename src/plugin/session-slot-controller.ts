@@ -10,7 +10,7 @@ import {
 } from "../core/reducer";
 import { SESSION_SLOT_COLOR, SESSION_SLOT_SVG_PAINT, type SessionSlotColor } from "../core/colors";
 import { UUID_V4_PATTERN } from "../core/events";
-import { SESSION_STATUS, type LocalAgentStatusEvent } from "../core/types";
+import { SESSION_STATUS, type LocalAgentStatusEvent, type LocalAgentTargetMetadata } from "../core/types";
 import {
   NAVIGATION_OUTCOME,
   ghosttyTmuxNavigator,
@@ -40,6 +40,16 @@ type SessionSlotRenderResult = (typeof SESSION_SLOT_RENDER_RESULT)[keyof typeof 
 export const SESSION_SLOT_RENDER_RETRY_DELAY_MS = 50;
 export const SESSION_SLOT_RENDER_ERROR = "Session slot render failed.";
 export const SESSION_SLOT_NAVIGATION_ERROR = "Session slot navigation unavailable.";
+
+/**
+ * Every navigation outcome is recorded. Four defects in this project were
+ * invisible because a failure looked exactly like a success from the outside,
+ * and the boundary with tmux is where they all lived. Pane and window ids are
+ * not user content, so this stays inside the privacy boundary.
+ */
+export function navigationOutcomeMessage(outcome: string, target: LocalAgentTargetMetadata): string {
+  return `Session slot navigation ${outcome} for pane ${target.tmuxPaneId} in session ${target.tmuxSession}.`;
+}
 export const SESSION_SLOT_PERSISTENCE_ERROR = "Session slot state subscriber failed.";
 export const SESSION_LIST_PAYLOAD_TYPE = "sessions";
 export const SET_SLOT_SESSION_EVENT = "set-slot-session";
@@ -48,7 +58,8 @@ export const CLEAR_SLOT_EVENT = "clear-slot";
 
 export interface SessionSlotListEntry {
   readonly sessionId: string;
-  readonly slotIndex: number;
+  /** Absent while the session sits on no key. */
+  readonly slotIndex?: number;
   readonly source: string;
   readonly lifecycle: string;
   readonly title: string;
@@ -79,6 +90,7 @@ export interface SessionSlotScheduler {
 
 export interface SessionSlotLogger {
   error(message: string): void;
+  info(message: string): void;
 }
 
 export interface SessionSlotInspector {
@@ -102,6 +114,7 @@ const productionControllerOptions: SessionSlotControllerOptions = {
   },
   logger: {
     error: (message) => streamDeck.logger.error(message),
+    info: (message) => streamDeck.logger.info(message),
   },
   navigator: ghosttyTmuxNavigator,
   windowNameResolver: createTmuxWindowNameResolver(),
@@ -173,6 +186,11 @@ export class SessionSlotController {
     for (const slot of state.slots) {
       if (slot.sessionId !== undefined && slot.target !== undefined) paneIds.add(slot.target.tmuxPaneId);
     }
+    // Unassigned sessions are offered in the inspector too, and without their
+    // window name every session of one tool reads identically there.
+    for (const session of state.unassignedSessions) {
+      if (session.target !== undefined) paneIds.add(session.target.tmuxPaneId);
+    }
     const entries = await Promise.all([...paneIds].map(async (paneId) => [paneId, await resolver.resolve(paneId)] as const));
     this.#windowNames = new Map(entries);
   }
@@ -223,7 +241,7 @@ export class SessionSlotController {
     const visible = this.#visibleActions.get(actionId);
     if (visible === undefined) return;
     const action = isInspectorPayloadOfType(payload, CLEAR_SLOT_EVENT)
-      ? { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: visible.slotIndex } as const
+      ? { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: visible.slotIndex, byUser: true } as const
       : this.#moveActionFor(payload, visible.slotIndex);
     if (action === undefined) return;
     const prevState = this.#state;
@@ -260,19 +278,24 @@ export class SessionSlotController {
       this.#logNavigationFailure();
       return;
     }
-    if (outcome === NAVIGATION_OUTCOME.UNAVAILABLE) {
+    // A normal outcome is a permanent record, not a failure: it stays at info
+    // so error remains reserved for actual navigation failures.
+    try { this.options.logger.info(navigationOutcomeMessage(outcome, target)); } catch { /* observability must never break navigation */ }
+    if (outcome === NAVIGATION_OUTCOME.UNAVAILABLE || outcome === NAVIGATION_OUTCOME.AMBIGUOUS) {
+      // Both abort before a single tmux command runs. Acknowledging here would
+      // tell the user they have seen a response they were never shown.
       this.#logNavigationFailure();
       return;
     }
     if (!this.#matchesCurrentAssignment(visible.slotIndex, sessionId, target, assignmentId)) return;
     const prevState = this.#state;
     if (outcome === NAVIGATION_OUTCOME.MISSING) {
+      // One lookup that failed to find the pane frees the key, but keeps the
+      // session: only the startup reconciliation, which enumerates every pane,
+      // knows enough to retire one.
       this.#state = reduceSessionState(this.#state, {
-        kind: SESSION_REDUCER_ACTION.PANE_MISSING,
+        kind: SESSION_REDUCER_ACTION.CLEAR_SLOT,
         slotIndex: visible.slotIndex,
-        sessionId,
-        target,
-        assignmentId,
       });
     } else {
       this.#state = reduceSessionState(this.#state, {
@@ -386,10 +409,19 @@ export class SessionSlotController {
     const titles = resolveSlotTitles(this.#state, (paneId) => this.#windowNames.get(paneId));
     return {
       type: SESSION_LIST_PAYLOAD_TYPE,
-      sessions: this.#state.slots.flatMap((slot, index) => {
-        if (slot.sessionId === undefined || slot.lifecycle === undefined || slot.source === undefined) return [];
-        return [{ sessionId: slot.sessionId, slotIndex: index, source: slot.source, lifecycle: slot.lifecycle, title: titles[index] ?? slot.source }];
-      }),
+      sessions: [
+        ...this.#state.slots.flatMap((slot, index) => {
+          if (slot.sessionId === undefined || slot.lifecycle === undefined || slot.source === undefined) return [];
+          return [{ sessionId: slot.sessionId, slotIndex: index, source: slot.source, lifecycle: slot.lifecycle, title: titles[index] ?? slot.source }];
+        }),
+        // A session with no key still belongs in the list; that is the only way
+        // the user can put it back on one.
+        ...this.#state.unassignedSessions.flatMap((session) => {
+          if (session.sessionId === undefined || session.lifecycle === undefined || session.source === undefined) return [];
+          const title = session.target === undefined ? session.source : this.#windowNames.get(session.target.tmuxPaneId) ?? session.source;
+          return [{ sessionId: session.sessionId, source: session.source, lifecycle: session.lifecycle, title }];
+        }),
+      ],
     };
   }
 

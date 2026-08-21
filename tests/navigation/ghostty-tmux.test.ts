@@ -13,14 +13,23 @@ describe("Ghostty tmux navigator", () => {
     expect(outcome).toBe(NAVIGATION_OUTCOME.NAVIGATED);
     expect(process.execute.mock.calls).toEqual([["tmux", ["has-session", "-t", "$0"]], ["tmux", ["list-panes", "-a", "-F", "#{pane_id}\t#{session_id}\t#{window_id}"]], ["tmux", ["list-clients", "-F", "#{client_tty}\t#{session_id}"]], ["open", ["-b", target.ghosttyBundleId]], ["tmux", ["switch-client", "-c", "/dev/ttys001", "-t", "$0"]], ["tmux", ["select-window", "-t", "@1"]], ["tmux", ["select-pane", "-t", "%1"]]]);
   });
-  it("returns missing without focusing when the pane is absent or its identifier was reused", async () => {
-    for (const panes of ["", "%1\t$2\t@1\n", "%1\t$0\t@2\n", "%1\t$0\t@1\textra\n"]) {
+  it("returns missing without focusing only when a trustworthy complete enumeration proves the pane absent", async () => {
+    for (const panes of ["", "%2\t$0\t@1\n", "%1\t$2\t@1\n", "%1\t$0\t@2\n"]) {
       const process = processFor(["", panes]);
       const outcome = await createGhosttyTmuxNavigator({ process }).navigate({ ...target, tmuxWindow: "@1" });
       expect(outcome).toBe(NAVIGATION_OUTCOME.MISSING);
       expect(process.execute).toHaveBeenCalledTimes(2);
     }
-    const invalid = processFor(["", "%1\t$0\tnot-a-window-id\n"]); expect(await createGhosttyTmuxNavigator({ process: invalid }).navigate(target)).toBe(NAVIGATION_OUTCOME.MISSING); expect(invalid.execute).toHaveBeenCalledTimes(2);
+  });
+  it("fails closed as unavailable on malformed, mixed, or untrusted pane enumerations without navigating or proving absence", async () => {
+    // Live evidence 2026-08-04: panes %10 and %11 existed while the
+    // enumeration was untrusted; treating that as absence released real keys.
+    for (const panes of ["%1\t$0\t@1\textra\n", "%1\t$0\n", "%1\t$0\tnot-a-window-id\n", "pane-1\t$0\t@1\n", "%1\tx$0\t@1\n", "%1\t$0\t@1\n%11\t$0\tbroken\n", "%1\t$0\t@1\n%12\t$0\t@9\u0007\n"]) {
+      const process = processFor(["", panes]);
+      const outcome = await createGhosttyTmuxNavigator({ process }).navigate(target);
+      expect(outcome).toBe(NAVIGATION_OUTCOME.UNAVAILABLE);
+      expect(process.execute).toHaveBeenCalledTimes(2);
+    }
   });
   it("returns ambiguous without focusing for zero or multiple targetable clients", async () => {
     for (const clients of ["", "/dev/ttys001\t$0\n/dev/ttys002\t$0\n", "/dev/ttys001\u0000\t$0\n", "/dev/ttys 001\t$0\n"]) {

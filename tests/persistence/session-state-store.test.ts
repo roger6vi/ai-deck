@@ -83,9 +83,29 @@ describe("session state serialization", () => {
   it("writes a valid schema envelope with exact allowlisted fields", () => {
     const state = populated();
     const raw = JSON.parse(serializeSessionState(state));
-    expect(Object.keys(raw).sort()).toEqual(["retiredSessions", "schemaVersion", "slots"]);
+    expect(Object.keys(raw).sort()).toEqual(["retiredSessions", "schemaVersion", "slots", "unassignedSessions"]);
     expect(raw.schemaVersion).toBe(SESSION_STATE_STORE_SCHEMA_VERSION);
     expect(raw.slots).toHaveLength(SESSION_REDUCER_LIMITS.SLOT_COUNT);
+  });
+
+  it("survives a restart with a session the user left unassigned", () => {
+    const cleared = reduceSessionState(populated(), { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 0 });
+    expect(cleared.unassignedSessions).toHaveLength(1);
+
+    const restored = parseSessionState(serializeSessionState(cleared));
+
+    expect(restored?.unassignedSessions).toEqual(cleared.unassignedSessions);
+    expect(restored?.slots[0]).toEqual({ index: 0 });
+  });
+
+  it("reads a state file written before unassigned sessions existed", () => {
+    const raw = JSON.parse(serializeSessionState(populated()));
+    delete raw.unassignedSessions;
+
+    const restored = parseSessionState(JSON.stringify(raw));
+
+    expect(restored?.unassignedSessions).toEqual([]);
+    expect(restored?.slots[0]?.sessionId).toBeDefined();
   });
 
   it("rejects malformed JSON", () => {

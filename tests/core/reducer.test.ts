@@ -12,6 +12,7 @@ import {
   LOCAL_AGENT_TOOL,
   SESSION_STATUS,
   type LocalAgentStatusEvent,
+  type LocalAgentTool,
 } from "../../src/core/types";
 
 const FIVE_MINUTES = 5 * 60 * 1000;
@@ -31,6 +32,7 @@ interface EventOptions {
   readonly lifecycle?: typeof SESSION_STATUS[keyof typeof SESSION_STATUS];
   readonly sequence?: number;
   readonly sessionId?: string;
+  readonly source?: typeof LOCAL_AGENT_TOOL[keyof typeof LOCAL_AGENT_TOOL];
   readonly timestamp?: number;
   readonly tmuxPaneId?: string;
 }
@@ -40,7 +42,7 @@ function event(options: EventOptions = {}): LocalAgentStatusEvent {
   return {
     schemaVersion: 1,
     eventId: `de305d54-75b4-431b-adb2-eb6b9e5460${eventNumber.toString().padStart(2, "0")}`,
-    source: LOCAL_AGENT_TOOL.OPENCODE,
+    source: options.source ?? LOCAL_AGENT_TOOL.OPENCODE,
     sessionId: options.sessionId ?? SESSION_IDS[0],
     sequence: options.sequence ?? eventNumber,
     timestamp: options.timestamp ?? eventNumber,
@@ -78,8 +80,9 @@ describe("session status reducer", () => {
     expect(state.slots[0]?.target?.tmuxPaneId).toBe("%4");
     expect(state.slots[1]?.target?.tmuxPaneId).toBe("%2");
 
-    const full = apply(state, event({ eventNumber: 7, sessionId: SESSION_IDS[5] }));
-    expect(full).toBe(state);
+    const full = apply(state, event({ eventNumber: 7, sessionId: SESSION_IDS[5], tmuxPaneId: "%8" }));
+    expect(assignedIds(full)).toEqual([...SESSION_IDS.slice(0, SLOT_COUNT)]);
+    expect(full.unassignedSessions.map((session) => session.sessionId)).toEqual([SESSION_IDS[5]]);
 
     const released = apply(
       full,
@@ -87,6 +90,7 @@ describe("session status reducer", () => {
     );
     const reused = apply(released, event({ eventNumber: 9, sessionId: SESSION_IDS[5] }));
     expect(assignedIds(reused)).toEqual([SESSION_IDS[5], ...SESSION_IDS.slice(1, 5)]);
+    expect(reused.unassignedSessions).toHaveLength(0);
   });
 
   it("derives free, running, completed, error, and acknowledged colors independent of elapsed time", () => {
@@ -262,6 +266,147 @@ describe("session status reducer", () => {
     expect(cleared.slots[1]?.target?.tmuxPaneId).toBe("%2");
   });
 
+  it("retires the least recently active unassigned session instead of dropping it silently", () => {
+    const limit = SESSION_REDUCER_LIMITS.UNASSIGNED_SESSION_LIMIT;
+    const id = (n: number) => `${(n + 10).toString(16).padStart(8, "0")}-e89b-42d3-a456-426614174000`;
+    let state = createSessionState();
+    // Fill the unassigned bucket past its cap, one session at a time.
+    for (let n = 0; n <= limit; n += 1) {
+      state = apply(state, event({ eventNumber: n + 1, sessionId: id(n), tmuxPaneId: `%${n + 1}` }));
+      state = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 0, byUser: true });
+    }
+
+    expect(state.unassignedSessions).toHaveLength(limit);
+    // The evicted one must be accounted for, not vanished.
+    expect(state.unassignedSessions.some((session) => session.sessionId === id(0))).toBe(false);
+    expect(state.retiredSessions.some((session) => session.sessionId === id(0))).toBe(true);
+  });
+
+  it("does not hand a free key to a session that was evicted from the unassigned bucket", () => {
+    const limit = SESSION_REDUCER_LIMITS.UNASSIGNED_SESSION_LIMIT;
+    const id = (n: number) => `${(n + 10).toString(16).padStart(8, "0")}-e89b-42d3-a456-426614174000`;
+    let state = createSessionState();
+    for (let n = 0; n <= limit; n += 1) {
+      state = apply(state, event({ eventNumber: n + 1, sessionId: id(n), tmuxPaneId: `%${n + 1}` }));
+      state = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 0, byUser: true });
+    }
+
+    const late = apply(state, event({ eventNumber: 90, sessionId: id(0), tmuxPaneId: "%1", lifecycle: SESSION_STATUS.COMPLETED }));
+
+    expect(late.slots.every((slot) => slot.sessionId !== id(0))).toBe(true);
+  });
+
+  it("keeps a still-active unassigned session alive by refreshing its place in the bucket", () => {
+    const limit = SESSION_REDUCER_LIMITS.UNASSIGNED_SESSION_LIMIT;
+    const id = (n: number) => `${(n + 10).toString(16).padStart(8, "0")}-e89b-42d3-a456-426614174000`;
+    let state = createSessionState();
+    for (let n = 0; n < limit; n += 1) {
+      state = apply(state, event({ eventNumber: n + 1, sessionId: id(n), tmuxPaneId: `%${n + 1}` }));
+      state = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 0, byUser: true });
+    }
+    // The oldest entry reports activity, so it is no longer the oldest.
+    state = apply(state, event({ eventNumber: 80, sessionId: id(0), tmuxPaneId: "%1", lifecycle: SESSION_STATUS.COMPLETED }));
+
+    state = apply(state, event({ eventNumber: 81, sessionId: id(limit), tmuxPaneId: `%${limit + 1}` }));
+    state = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 0, byUser: true });
+
+    expect(state.unassignedSessions.some((session) => session.sessionId === id(0))).toBe(true);
+    expect(state.unassignedSessions.some((session) => session.sessionId === id(1))).toBe(false);
+  });
+
+  it("parks a new session as unassigned when every key is taken, instead of dropping it", () => {
+    const id = (n: number) => `${(n + 30).toString(16).padStart(8, "0")}-e89b-42d3-a456-426614174000`;
+    let state = createSessionState();
+    for (let n = 0; n < SLOT_COUNT; n += 1) {
+      state = apply(state, event({ eventNumber: n + 1, sessionId: id(n), tmuxPaneId: `%${n + 1}` }));
+    }
+    expect(state.slots.every((slot) => slot.sessionId !== undefined)).toBe(true);
+
+    const crowded = apply(state, event({ eventNumber: 9, sessionId: id(9), tmuxPaneId: "%9" }));
+
+    // Silently discarding it makes a running agent permanently invisible with
+    // no way for the user to reach it.
+    expect(crowded.unassignedSessions.map((session) => session.sessionId)).toEqual([id(9)]);
+    expect(crowded.slots.map((slot) => slot.sessionId)).toEqual([id(0), id(1), id(2), id(3), id(4)]);
+  });
+
+  it("keeps a cleared session known and unassigned instead of destroying it", () => {
+    const state = apply(createSessionState(), event({ sessionId: SESSION_IDS[0], tmuxPaneId: "%1" }));
+    const assignmentId = state.slots[0]?.assignmentId;
+
+    const cleared = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 0 });
+
+    expect(cleared.unassignedSessions).toHaveLength(1);
+    expect(cleared.unassignedSessions[0]).toMatchObject({
+      sessionId: SESSION_IDS[0],
+      assignmentId,
+      target: { tmuxPaneId: "%1" },
+    });
+  });
+
+  it("puts an unassigned session back on any free slot the user picks", () => {
+    let state = apply(createSessionState(), event({ sessionId: SESSION_IDS[0], tmuxPaneId: "%1" }));
+    state = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 0, byUser: true });
+
+    const restored = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.MOVE_SESSION, sessionId: SESSION_IDS[0], slotIndex: 3 });
+
+    expect(restored.slots[3]?.sessionId).toBe(SESSION_IDS[0]);
+    expect(restored.slots[3]?.target?.tmuxPaneId).toBe("%1");
+    expect(restored.unassignedSessions).toHaveLength(0);
+  });
+
+  it("unassigns the occupant when an unassigned session is placed on a taken slot", () => {
+    let state = apply(createSessionState(), event({ eventNumber: 1, sessionId: SESSION_IDS[0], tmuxPaneId: "%1" }));
+    state = apply(state, event({ eventNumber: 2, sessionId: SESSION_IDS[1], tmuxPaneId: "%2" }));
+    state = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 0, byUser: true });
+
+    const placed = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.MOVE_SESSION, sessionId: SESSION_IDS[0], slotIndex: 1 });
+
+    expect(placed.slots[1]?.sessionId).toBe(SESSION_IDS[0]);
+    expect(placed.unassignedSessions.map((session) => session.sessionId)).toEqual([SESSION_IDS[1]]);
+  });
+
+  it("keeps a user-unassigned session off the keys even when one is free", () => {
+    let state = apply(createSessionState(), event({ eventNumber: 1, sessionId: SESSION_IDS[0], tmuxPaneId: "%1" }));
+    state = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 0, byUser: true });
+
+    const updated = apply(state, event({ eventNumber: 2, sessionId: SESSION_IDS[0], tmuxPaneId: "%1", lifecycle: SESSION_STATUS.COMPLETED }));
+
+    expect(updated.slots.every((slot) => slot.sessionId === undefined)).toBe(true);
+    expect(updated.unassignedSessions).toHaveLength(1);
+  });
+
+  it("lets a session parked by the plugin take a key as soon as one frees up", () => {
+    let state = apply(createSessionState(), event({ eventNumber: 1, sessionId: SESSION_IDS[0], tmuxPaneId: "%1" }));
+    // A failed navigation frees the key without the user asking for it.
+    state = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 0 });
+
+    const updated = apply(state, event({ eventNumber: 2, sessionId: SESSION_IDS[0], tmuxPaneId: "%1", lifecycle: SESSION_STATUS.COMPLETED }));
+
+    expect(updated.slots[0]?.sessionId).toBe(SESSION_IDS[0]);
+    expect(updated.unassignedSessions).toHaveLength(0);
+  });
+
+  it("respects the user by leaving an unassigned session unassigned when it reports again", () => {
+    let state = apply(createSessionState(), event({ eventNumber: 1, sessionId: SESSION_IDS[0], tmuxPaneId: "%1" }));
+    state = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 0, byUser: true });
+
+    const updated = apply(state, event({ eventNumber: 2, sessionId: SESSION_IDS[0], tmuxPaneId: "%1", lifecycle: SESSION_STATUS.COMPLETED }));
+
+    expect(updated.slots.every((slot) => slot.sessionId === undefined)).toBe(true);
+    expect(updated.unassignedSessions).toHaveLength(1);
+    expect(updated.unassignedSessions[0]?.lifecycle).toBe(SESSION_STATUS.COMPLETED);
+  });
+
+  it("forgets an unassigned session once its pane is gone", () => {
+    let state = apply(createSessionState(), event({ eventNumber: 1, sessionId: SESSION_IDS[0], tmuxPaneId: "%1" }));
+    state = reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 0 });
+
+    const gone = apply(state, event({ eventNumber: 2, sessionId: SESSION_IDS[0], tmuxPaneId: "%1", lifecycle: SESSION_STATUS.PANE_DISAPPEARED }));
+
+    expect(gone.unassignedSessions).toHaveLength(0);
+  });
+
   it("treats clearing an empty or out-of-range slot as a no-op", () => {
     const state = apply(createSessionState(), event({ sessionId: SESSION_IDS[0] }));
 
@@ -278,5 +423,77 @@ describe("session status reducer", () => {
     for (const invalidIndex of [-1, SLOT_COUNT, 0.5, Number.NaN]) {
       expect(reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.MOVE_SESSION, sessionId: SESSION_IDS[0], slotIndex: invalidIndex })).toBe(state);
     }
+  });
+
+  it("advances on a newer timestamp even when a restarted adapter reset its sequence counter", () => {
+    const running = apply(createSessionState(), event({ sequence: 50, timestamp: 100 }));
+
+    const advanced = apply(running, event({ eventNumber: 2, lifecycle: SESSION_STATUS.COMPLETED, sequence: 1, timestamp: 101 }));
+
+    expect(advanced).not.toBe(running);
+    expect(advanced.slots[0]?.lifecycle).toBe(SESSION_STATUS.COMPLETED);
+    expect(advanced.slots[0]?.lastSequence).toBe(1);
+  });
+
+  it("converges legacy OpenCode generations of one pane into the single canonical entry", () => {
+    // Persisted pre-fix state: two legacy generations on pane %6 (a root and
+    // its child, one parked off its key), one OpenCode entry on another pane,
+    // and a Claude entry sharing pane %6.
+    const legacySlot = (index: number, sessionId: string, source: LocalAgentTool, tmuxPaneId: string) => ({
+      index,
+      assignmentId: `assignment-${sessionId.slice(0, 8)}`,
+      sessionId,
+      source,
+      lifecycle: SESSION_STATUS.COMPLETED,
+      target: { tmuxPaneId, tmuxSession: "$0", ghosttyBundleId: "com.mitchellh.ghostty" },
+      lastEventId: `legacy-event-${sessionId.slice(0, 8)}`,
+      lastTimestamp: 100,
+    });
+    const { index: _parkedIndex, ...parkedLegacy } = legacySlot(5, SESSION_IDS[5], LOCAL_AGENT_TOOL.OPENCODE, "%6");
+    const state = {
+      slots: [
+        legacySlot(0, SESSION_IDS[0], LOCAL_AGENT_TOOL.OPENCODE, "%6"),
+        legacySlot(1, SESSION_IDS[1], LOCAL_AGENT_TOOL.OPENCODE, "%6"),
+        legacySlot(2, SESSION_IDS[2], LOCAL_AGENT_TOOL.OPENCODE, "%11"),
+        legacySlot(3, SESSION_IDS[3], LOCAL_AGENT_TOOL.CLAUDE, "%6"),
+        { index: 4 },
+      ],
+      unassignedSessions: [parkedLegacy],
+      retiredSessions: [],
+    };
+
+    const converged = apply(state, event({ eventNumber: 5, sessionId: SESSION_IDS[4], tmuxPaneId: "%6", timestamp: 200 }));
+
+    expect(converged.slots.filter((slot) => slot.sessionId !== undefined).map((slot) => slot.sessionId)).toEqual([SESSION_IDS[4], SESSION_IDS[2], SESSION_IDS[3]]);
+    expect(converged.unassignedSessions).toHaveLength(0);
+    expect(converged.retiredSessions.map((session) => session.sessionId)).toEqual(expect.arrayContaining([SESSION_IDS[0], SESSION_IDS[1], SESSION_IDS[5]]));
+    expect(converged.retiredSessions.some((session) => session.sessionId === SESSION_IDS[3])).toBe(false);
+
+    // A stale event from a replaced generation must not resurrect its entry.
+    const stale = apply(converged, event({ eventNumber: 6, sessionId: SESSION_IDS[0], tmuxPaneId: "%6", timestamp: 50 }));
+    expect(stale).toBe(converged);
+  });
+
+  it("never converges other tools or other panes on a non-OpenCode event", () => {
+    const legacySlot = (index: number, sessionId: string, tmuxPaneId: string) => ({
+      index,
+      assignmentId: `assignment-${sessionId.slice(0, 8)}`,
+      sessionId,
+      source: LOCAL_AGENT_TOOL.OPENCODE,
+      lifecycle: SESSION_STATUS.COMPLETED,
+      target: { tmuxPaneId, tmuxSession: "$0", ghosttyBundleId: "com.mitchellh.ghostty" },
+      lastEventId: `legacy-event-${sessionId.slice(0, 8)}`,
+      lastTimestamp: 100,
+    });
+    const state = {
+      slots: [legacySlot(0, SESSION_IDS[0], "%6"), legacySlot(1, SESSION_IDS[1], "%6"), { index: 2 }, { index: 3 }, { index: 4 }],
+      unassignedSessions: [],
+      retiredSessions: [],
+    };
+
+    const afterClaude = apply(state, event({ eventNumber: 3, sessionId: SESSION_IDS[2], tmuxPaneId: "%6", source: LOCAL_AGENT_TOOL.CLAUDE, timestamp: 200 }));
+
+    expect(afterClaude.slots.filter((slot) => slot.sessionId !== undefined)).toHaveLength(3);
+    expect(afterClaude.retiredSessions).toHaveLength(0);
   });
 });

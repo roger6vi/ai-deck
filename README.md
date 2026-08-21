@@ -24,18 +24,39 @@ the physical device.
 
 ## Install
 
-From the repository root:
+For a packaged installation on a new Mac, run from the repository root:
 
 ```bash
 npm install
-npm run build          # bundles src/plugin.ts to bin/plugin.js
-npm run pack           # regenerates assets, validates, and packages
-npm run restart:plugin # restarts the plugin in the Stream Deck app
+npm run pack
 ```
 
-After the restart, the plugin registers `com.gentleman.ai-deck` with the
-Stream Deck host, publishes an authenticated `runtime/endpoint.json`
-under the plugin root, and starts the local loopback server.
+`npm run pack` builds and validates the plugin, then creates
+`dist/com.gentleman.ai-deck.streamDeckPlugin`; it does not install the
+plugin. Open that installer in Finder and approve the installation in the
+Stream Deck app. If this Mac runs OpenCode, install the matching adapter from
+the same checkout:
+
+```bash
+npm run install:opencode
+```
+
+For development, link the built `.sdPlugin` directory instead of installing
+the packaged artifact:
+
+```bash
+npm install
+npm run build
+npm exec -- streamdeck link com.gentleman.ai-deck.sdPlugin
+npm run restart:plugin
+npm run install:opencode # only when this Mac runs OpenCode
+```
+
+`restart:plugin` starts or restarts an existing installation or development
+link; it is not a first-install command. Once running, the plugin registers
+`com.gentleman.ai-deck` with the Stream Deck host, publishes an authenticated
+`runtime/endpoint.json` under the installed plugin root, and starts the local
+loopback server.
 
 To import the bundled profile:
 
@@ -104,6 +125,52 @@ This runs the vitest suite, `tsc --noEmit`, production-only
 `npm audit`, plugin packaging and validation, and a bounded runtime
 smoke test.
 
+## Incident log
+
+### 2026-08-04: disappearing and duplicate OpenCode session keys
+
+**Outcome.** The fix preserves a session key when tmux pane enumeration is not
+trustworthy and represents each OpenCode tmux pane with one stable deck entry
+across root and child sessions.
+
+**Symptoms.** Sessions appeared on Stream Deck, but pressing a session key
+could make the key and session disappear while Ghostty and tmux were still
+alive. Multiple OpenCode root/child native sessions in one pane could also
+produce duplicate or stale entries, and one child becoming idle or failing
+could incorrectly complete or fail the pane.
+
+**Root cause.** Active logs recorded false `missing` outcomes for panes `%11`
+twice, `%12` once, and `%10` once; `%10` and `%11` still existed.
+`exactPaneRow` treated malformed or incomplete `tmux list-panes` output like
+trustworthy proof of absence. `handlePhysicalKeyDown` then converted
+`MISSING` to `CLEAR_SLOT`, parking the session and making the key appear to
+close. Separately, OpenCode identity and lifecycle were tracked per native
+session instead of per tmux pane, so roots, children, and older generations
+could compete for the same pane lifecycle.
+
+**Fix.** Only a complete, fully valid pane enumeration can now prove
+`MISSING`. Malformed, mixed, truncated, or otherwise untrusted output returns
+`UNAVAILABLE`, preserving the assignment and unread state; normal navigation
+outcomes are recorded at info level while actual failures remain errors.
+OpenCode now derives one identity from the tmux session and pane, aggregates
+all root/child activity, keeps the pane running while any native session is
+active, and converges older per-native-session entries when the next canonical
+pane event arrives.
+
+**Verification.** Regression coverage includes malformed and mixed enumeration
+preserving a slot, info/error logging, pane-scoped identity, aggregate
+lifecycle, adapter-restart sequence reset, and legacy entry convergence.
+
+**Installation note.** After merge, use the packaged new-Mac installation
+above and install the matching adapter on that Mac. `npm run pack` creates the
+installer but does not install it, and `restart:plugin` alone cannot install an
+absent plugin.
+
+The work-Mac acceptance step (install with Claude enabled and record rollback
+evidence) was **not executed or passed** as part of this change. After merge,
+run the packaged installation on the work Mac, enable Claude with the commands
+below, verify the integration there, and record the rollback evidence.
+
 ## Adapter events (per-tool integration)
 
 The plugin listens for authenticated `POST /v1/events` events on the
@@ -143,12 +210,13 @@ AI_DECK_PLUGIN_ROOT=/absolute/path/to/com.gentleman.ai-deck.sdPlugin \
 
 ### OpenCode adapter
 
-The bundled OpenCode adapter maps host session events to lifecycle
-events automatically: `session.status` busy/retry becomes
-`started`/`running` (amber), `session.idle` becomes `completed` (blue),
-and `session.error` becomes `error` (red). Native OpenCode session ids
-are deterministically encoded as version-4 UUIDs, so a conversation
-keeps its key across turns and restarts.
+The bundled OpenCode adapter maps host session events to one aggregate
+lifecycle per tmux pane. Busy/retry activity becomes `started`/`running`
+(amber); the pane becomes `completed` (blue) or `error` (red) only when no
+tracked root or child session remains active. Its stable version-4 UUID is
+derived from the tmux session and pane identifiers, so native root/child
+sessions share one key and older per-native-session entries converge after
+the next pane event.
 
 Install it after building:
 

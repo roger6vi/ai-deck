@@ -16,24 +16,26 @@ task_progress:
     - "2.1"
     - "2.2"
     - "2.3"
-  remaining:
     - "3.1"
     - "3.2"
     - "3.3"
     - "3.4"
     - "4.1"
     - "4.2"
-    - "4.3"
+  remaining: []
+  deferred:
+    - id: "D.1"
+      former_task: "4.3"
+      description: Install on work Mac with Claude enabled and record rollback evidence
+      status: deferred-non-blocking
+      blocking: false
+      decision: Maintainer explicitly deferred (2026-08-04) to post-merge environment validation outside the scope of this PR
+      execution: NOT executed; not passed, not failed; must not be claimed as passed by verify, Judgment Day, or the PR
 apply_progress:
-  current_slice: Adapter emit CLI helper (transport for shell-wrapper integrations)
-  status: parseAdapterEmitArgs and runAdapterEmit validate every candidate event through the plugin's own allowlist parser, map endpoint-client outcomes to distinct exit codes, and never leak raw errors to stderr; the shell-wrapper mechanism was chosen as the default per-tool observation strategy
-  implementation: committed (5645198 on branch feat/session-runtime-wiring-and-observers; stacked on PR #34)
-  verification: RED missing module; GREEN focused 12/12; full Node 24 npm run verify 380/380, strict typecheck, 0 vulnerabilities, package validation, bounded runtime smoke
-  blockers:
-    - PR #34 (nav + adapter + persistence + reconciler) awaits size:exception review; this branch stacks on top and must land after PR #34 or rebase.
-    - PR #35 branch delta 971 additions / 10 deletions; still under the 1,600 exception cap.
-    - Per-tool wrapper installers (Codex, OpenCode, Claude shell hook scripts) still pending; the shared adapter-emit CLI is the transport, but tool-specific hook install still needs decisions on shell (zsh/bash/fish), install path, and preexec/postexec mechanism.
-    - Standalone CLI bundling for PATH install is a documented follow-up (would need a second rollup entry and updates to `scripts/check-package.mjs` allowlist).
-    - Task 4.2 (hardware test with two OpenCode sessions) and 4.3 (install on work Mac with Claude enabled + rollback evidence) require physical Stream Deck access and are outside autonomous scope.
-  requirement_amendment: unassigned slots gray; green only for assigned acknowledged/read sessions; exact N assigned colors plus 5-N gray; immediate gray release on pane disappearance; initial all-gray state
-  next_action: Rebase branch on merged PR #34; design per-tool wrapper installers with the user (shell, install path, preexec/postexec); execute 4.2/4.3 physical acceptance
+  current_slice: Deferred environment validation reclassification (former task 4.3 -> non-blocking follow-up D.1, 2026-08-04)
+  status: Implementation scope complete — 12/12 implementation tasks done. Former task 4.3 reclassified as non-blocking deferred environment validation (D.1) by explicit maintainer decision; NOT executed and not claimed as passed. Current scope accepted on the maintainer-approved Virtual Stream Deck acceptance (task 4.2, evidence revision sha256:8285e0955516e1958bb934363f81f67a233328cb3392fce6f8b01c97580c4888) plus all previously recorded implementation/test evidence. Documentary slice only: no tests, builds, installs, restarts, runtime, source edits, or Git actions.
+  implementation: src/adapters/{adapter-environment,opencode-session,opencode-plugin}.ts, src/core/reducer.ts + 4 test files; spec delta in specs/local-agent-status-adapters/spec.md; Engram topics sdd/local-agent-session-status/{tasks,apply-progress} updated in parity
+  verification: Focused 47/47 + strict typecheck; full suite 506/506; exact Node 24 npm run verify (see apply-progress.md); task 4.2 acceptance evidence revision sha256:8285e0955516e1958bb934363f81f67a233328cb3392fce6f8b01c97580c4888
+  blockers: []
+  requirement_amendment: unassigned slots gray; green only for assigned acknowledged/read sessions; exact N assigned colors plus 5-N gray; immediate gray release on pane disappearance; initial all-gray state; one OpenCode deck entry per tmux pane with legacy-generation convergence
+  next_action: sdd-verify. No archive claim. Deferred follow-up D.1 remains open as external post-merge environment validation and is not part of the verify scope.
