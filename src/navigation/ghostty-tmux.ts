@@ -56,7 +56,24 @@ export function createBoundedNavigationProcess(options: { readonly launcher: Nav
 const productionNavigationProcess = createBoundedNavigationProcess();
 function isSafeTarget(target: LocalAgentTargetMetadata): boolean { return TMUX_PANE_PATTERN.test(target.tmuxPaneId) && TMUX_SESSION_PATTERN.test(target.tmuxSession) && (target.tmuxWindow === undefined || TMUX_WINDOW_PATTERN.test(target.tmuxWindow)) && target.ghosttyBundleId === GHOSTTY_BUNDLE_ID; }
 function rows(stdout: string): readonly (readonly string[])[] { return stdout.split("\n").filter((line) => line.length > 0).map((line) => line.split("\t")); }
-function exactPaneRow(stdout: string, target: LocalAgentTargetMetadata): readonly string[] | undefined { return rows(stdout).find((row) => row.length === 3 && row.every((field) => !/[\x00-\x1f\x7f]/.test(field)) && TMUX_WINDOW_PATTERN.test(row[2] ?? "") && row[0] === target.tmuxPaneId && row[1] === target.tmuxSession && (target.tmuxWindow === undefined || row[2] === target.tmuxWindow)); }
+export const PANE_ENUMERATION_STATUS = { TRUSTED: "trusted", UNTRUSTED: "untrusted" } as const;
+export type PaneEnumerationStatus = (typeof PANE_ENUMERATION_STATUS)[keyof typeof PANE_ENUMERATION_STATUS];
+interface TrustedPaneEnumeration { readonly status: typeof PANE_ENUMERATION_STATUS.TRUSTED; readonly rows: readonly (readonly string[])[]; }
+interface UntrustedPaneEnumeration { readonly status: typeof PANE_ENUMERATION_STATUS.UNTRUSTED; }
+type PaneEnumeration = TrustedPaneEnumeration | UntrustedPaneEnumeration;
+function isWellFormedPaneRow(row: readonly string[]): boolean { return row.length === 3 && row.every((field) => !/[\x00-\x1f\x7f]/.test(field)) && TMUX_PANE_PATTERN.test(row[0] ?? "") && TMUX_SESSION_PATTERN.test(row[1] ?? "") && TMUX_WINDOW_PATTERN.test(row[2] ?? ""); }
+/**
+ * Absence may only be concluded from a complete enumeration in which every
+ * row parses. One malformed, truncated, or control-bearing row means the
+ * output itself is untrusted: it can neither prove a pane absent nor be
+ * navigated on, so the caller must fail closed instead of releasing the key.
+ */
+function parsePaneEnumeration(stdout: string): PaneEnumeration {
+  const parsed = rows(stdout);
+  if (!parsed.every(isWellFormedPaneRow)) return { status: PANE_ENUMERATION_STATUS.UNTRUSTED };
+  return { status: PANE_ENUMERATION_STATUS.TRUSTED, rows: parsed };
+}
+function exactPaneRow(enumeration: TrustedPaneEnumeration, target: LocalAgentTargetMetadata): readonly string[] | undefined { return enumeration.rows.find((row) => row[0] === target.tmuxPaneId && row[1] === target.tmuxSession && (target.tmuxWindow === undefined || row[2] === target.tmuxWindow)); }
 function targetableClients(stdout: string, target: LocalAgentTargetMetadata): readonly string[] { return rows(stdout).filter((row) => row.length === 2 && row.every((field) => !/[\x00-\x1f\x7f]/.test(field)) && /^\/dev\/[A-Za-z0-9._-]+$/.test(row[0] ?? "") && row[1] === target.tmuxSession).map(([tty]) => tty ?? ""); }
 export function createGhosttyTmuxNavigator(options: GhosttyTmuxNavigatorOptions = { process: productionNavigationProcess }): AssignedTargetNavigator { return { async navigate(target): Promise<NavigationOutcome> {
       if (!isSafeTarget(target)) return NAVIGATION_OUTCOME.UNAVAILABLE;
@@ -66,7 +83,9 @@ export function createGhosttyTmuxNavigator(options: GhosttyTmuxNavigatorOptions 
       } catch {
         return NAVIGATION_OUTCOME.UNAVAILABLE;
       }
-      const paneRow = exactPaneRow(paneOutput, target);
+      const enumeration = parsePaneEnumeration(paneOutput);
+      if (enumeration.status === PANE_ENUMERATION_STATUS.UNTRUSTED) return NAVIGATION_OUTCOME.UNAVAILABLE;
+      const paneRow = exactPaneRow(enumeration, target);
       const windowId = paneRow?.[2];
       if (paneRow === undefined || windowId === undefined) return NAVIGATION_OUTCOME.MISSING;
       let clients: readonly string[]; try {

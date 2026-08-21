@@ -61,7 +61,7 @@ function fixture(): { readonly controller: SessionSlotController; readonly inspe
   const options: SessionSlotControllerOptions = {
     clock: { now: () => 0 },
     scheduler: { schedule: () => undefined, cancel: () => undefined },
-    logger: { error: vi.fn() },
+    logger: { error: vi.fn(), info: vi.fn() },
     windowNameResolver: { resolve: async () => WINDOW_NAME },
     inspector: stub.inspector,
   };

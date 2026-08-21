@@ -10,6 +10,7 @@ import { NAVIGATION_OUTCOME, type AssignedTargetNavigator } from "../../src/navi
 import {
   SESSION_SLOT_NAVIGATION_ERROR,
   SessionSlotController,
+  navigationOutcomeMessage,
   sessionSlotSvgDataUri,
 } from "../../src/plugin/session-slot-controller";
 
@@ -33,7 +34,7 @@ function hermeticController(): SessionSlotController {
       schedule: (callback, delayMs) => setTimeout(callback, delayMs),
       cancel: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
     },
-    logger: { error: vi.fn() },
+    logger: { error: vi.fn(), info: vi.fn() },
     windowNameResolver: { resolve: async () => undefined },
   });
 }
@@ -81,11 +82,11 @@ function status(options: EventOptions = {}): LocalAgentStatusEvent {
   };
 }
 
-function controllerWith(navigator: AssignedTargetNavigator, logger = vi.fn()): SessionSlotController {
+function controllerWith(navigator: AssignedTargetNavigator, logger = vi.fn(), info = vi.fn()): SessionSlotController {
   return new SessionSlotController({
     clock: { now: () => 10 },
     scheduler: { schedule: () => 0, cancel: () => undefined },
-    logger: { error: logger },
+    logger: { error: logger, info },
     navigator,
   });
 }
@@ -291,6 +292,35 @@ describe("session slot Stream Deck integration", () => {
     expect(navigate).toHaveBeenCalledTimes(1);
     expect(logger).toHaveBeenCalledWith(SESSION_SLOT_NAVIGATION_ERROR);
     expect(logger.mock.calls.flat()).not.toContain("sensitive stdout target %99");
+  });
+
+  it("keeps the assignment on untrusted unavailable evidence and records normal outcomes at info level", async () => {
+    const logger = vi.fn(); const info = vi.fn();
+    const controller = controllerWith({ navigate: vi.fn().mockResolvedValue(NAVIGATION_OUTCOME.UNAVAILABLE) }, logger, info);
+    const action = new SessionSlotActionBase(controller, () => 2); const first = key("first", 0);
+    await action.onWillAppear(appear(first));
+    await controller.handleStatusEvent(status({ tmuxPaneId: "%10" }), 1);
+    await controller.handleStatusEvent(status({ eventId: "de305d54-75b4-431b-adb2-eb6b9e546002", lifecycle: SESSION_STATUS.COMPLETED, tmuxPaneId: "%10", timestamp: 2 }), 2);
+
+    await action.onKeyDown({ action: first as unknown as KeyAction } as KeyDownEvent);
+    // Untrusted evidence must not clear the slot, move the session to
+    // unassigned, or acknowledge an unread response.
+    expect(controller.state.slots[0]?.sessionId).toBe(SESSION_IDS[0]);
+    expect(controller.state.slots[0]?.acknowledged).toBe(false);
+    expect(controller.state.unassignedSessions).toHaveLength(0);
+    expect(imageFor(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.BLUE));
+    expect(info).toHaveBeenCalledWith(navigationOutcomeMessage(NAVIGATION_OUTCOME.UNAVAILABLE, { tmuxPaneId: "%10", tmuxSession: "$0", ghosttyBundleId: "com.mitchellh.ghostty" }));
+    expect(logger).toHaveBeenCalledWith(SESSION_SLOT_NAVIGATION_ERROR);
+    expect(logger).not.toHaveBeenCalledWith(navigationOutcomeMessage(NAVIGATION_OUTCOME.UNAVAILABLE, { tmuxPaneId: "%10", tmuxSession: "$0", ghosttyBundleId: "com.mitchellh.ghostty" }));
+
+    const okError = vi.fn(); const okInfo = vi.fn();
+    const okController = controllerWith({ navigate: vi.fn().mockResolvedValue(NAVIGATION_OUTCOME.NAVIGATED) }, okError, okInfo);
+    const okAction = new SessionSlotActionBase(okController, () => 2); const okKey = key("ok", 0);
+    await okAction.onWillAppear(appear(okKey));
+    await okController.handleStatusEvent(status({ tmuxPaneId: "%11" }), 1);
+    await okAction.onKeyDown({ action: okKey as unknown as KeyAction } as KeyDownEvent);
+    expect(okInfo).toHaveBeenCalledWith(navigationOutcomeMessage(NAVIGATION_OUTCOME.NAVIGATED, { tmuxPaneId: "%11", tmuxSession: "$0", ghosttyBundleId: "com.mitchellh.ghostty" }));
+    expect(okError).not.toHaveBeenCalled();
   });
 
   it("does not let a delayed missing result mutate a restarted same-value assignment", async () => {

@@ -20,6 +20,17 @@ export function deriveAdapterSessionId(nativeSessionId: string): string {
   return `${uuid.slice(0, 8)}-${uuid.slice(8, 12)}-${uuid.slice(12, 16)}-${uuid.slice(16, 20)}-${uuid.slice(20)}`;
 }
 
+/**
+ * OpenCode gets one deck entry per tmux pane, not per native session: a root
+ * and every child/subagent it spawns share the pane they run in. The identity
+ * hashes only tmux's own internal identifiers (never a title or window name),
+ * and the tmux session id scopes the pane id so two tmux servers cannot
+ * collide on the same `%N`.
+ */
+export function deriveOpenCodePaneSessionId(tmuxSession: string, tmuxPaneId: string): string {
+  return deriveAdapterSessionId(`opencode:${tmuxSession}:${tmuxPaneId}`);
+}
+
 function resolvePluginRoot(): string | undefined {
   const candidate = process.env.AI_DECK_PLUGIN_ROOT ?? INSTALLED_PLUGIN_ROOT;
   try {

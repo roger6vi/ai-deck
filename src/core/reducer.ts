@@ -1,4 +1,4 @@
-import { SESSION_STATUS, type LocalAgentStatusEvent, type LocalAgentTargetMetadata } from "./types";
+import { LOCAL_AGENT_TOOL, SESSION_STATUS, type LocalAgentStatusEvent, type LocalAgentTargetMetadata } from "./types";
 
 export { deriveSlotColor, SESSION_SLOT_COLOR } from "./colors";
 
@@ -208,7 +208,46 @@ function matchesAssignment(slot: SessionSlot | undefined, sessionId: string, tar
   return slot?.sessionId === sessionId && slot.assignmentId === assignmentId && slot.target?.tmuxPaneId === target.tmuxPaneId && slot.target.tmuxSession === target.tmuxSession && slot.target.tmuxWindow === target.tmuxWindow && slot.target.ghosttyBundleId === target.ghosttyBundleId;
 }
 
+/**
+ * OpenCode reports one deck entry per tmux pane. Adapters installed before
+ * that contract persisted one entry per native session, so a pane could hold
+ * several stale generations of itself. The next canonical event for the pane
+ * retires every other OpenCode entry sharing its tmux session and pane —
+ * assigned or parked — so the old records disappear instead of lingering as
+ * lookalikes. Other tools and other panes are never touched; dedupe by
+ * identity, never by title.
+ */
+function convergeOpenCodePane(state: SessionState, event: LocalAgentStatusEvent): SessionState {
+  // The event may only replace generations it is newer than; a late stale
+  // event from a replaced generation must never destroy the canonical entry.
+  const isLegacyEntry = (sessionId: string | undefined, source: LocalAgentStatusEvent["source"] | undefined, target: LocalAgentTargetMetadata | undefined, lastTimestamp: number | undefined, lastSequence: number | undefined): boolean =>
+    sessionId !== undefined && sessionId !== event.sessionId && source === LOCAL_AGENT_TOOL.OPENCODE &&
+    target !== undefined && target.tmuxSession === event.target.tmuxSession && target.tmuxPaneId === event.target.tmuxPaneId &&
+    (lastTimestamp === undefined || isNewer(lastTimestamp, lastSequence, event));
+  let retired = state.retiredSessions;
+  let changed = false;
+  const slots = state.slots.map((slot) => {
+    if (!isLegacyEntry(slot.sessionId, slot.source, slot.target, slot.lastTimestamp, slot.lastSequence)) return slot;
+    changed = true;
+    retired = addRetiredSession(retired, unassignedFromSlot(slot));
+    return { index: slot.index };
+  });
+  const unassigned: UnassignedSession[] = [];
+  for (const session of state.unassignedSessions) {
+    if (!isLegacyEntry(session.sessionId, session.source, session.target, session.lastTimestamp, session.lastSequence)) {
+      unassigned.push(session);
+      continue;
+    }
+    changed = true;
+    retired = addRetiredSession(retired, session);
+  }
+  return changed ? freezeState(slots, retired, unassigned) : state;
+}
+
 function reduceEvent(state: SessionState, event: LocalAgentStatusEvent): SessionState {
+  if (event.source === LOCAL_AGENT_TOOL.OPENCODE) {
+    state = convergeOpenCodePane(state, event);
+  }
   const slotIndex = state.slots.findIndex((slot) => slot.sessionId === event.sessionId);
   if (slotIndex >= 0) {
     const slot = state.slots[slotIndex];

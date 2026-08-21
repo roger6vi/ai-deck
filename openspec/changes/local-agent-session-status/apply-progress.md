@@ -1,5 +1,62 @@
 # Apply Progress: Local Agent Session Status
 
+## Deferred Environment Validation: Former Task 4.3 Reclassified (2026-08-04)
+
+- Maintainer decision (explicit, 2026-08-04): the former task 4.3 — install on work Mac with Claude enabled and record rollback evidence — is deferred to post-merge environment validation outside the scope of this PR, so the change can advance to verify/Judgment Day/PR without blocking on the physical work-Mac environment.
+- Rationale: the item requires maintainer-owned physical hardware (work Mac) and is environment validation, not implementation work; all implementation, test, and virtual acceptance evidence for the in-scope work is already settled.
+- Status of the deferred item: NOT executed — not passed, not failed. It MUST NOT be claimed as passed by verify, Judgment Day, or the PR. It remains visible and traceable as follow-up D.1 in `tasks.md` and in the Deferred Follow-Ups section below.
+- Scope: documentary reclassification only — no tests, builds, installs, restarts, runtime, source/test edits, Git, or GitHub actions occurred in this slice.
+- Implementation task count is now 12/12 complete. This supersedes all prior "12/13, only 4.3 remains open" and "Next: execute 4.3 …" statements in this artifact.
+- Current scope is complete based on virtual acceptance (task 4.2, evidence revision `sha256:8285e0955516e1958bb934363f81f67a233328cb3392fce6f8b01c97580c4888`) plus all previously recorded implementation/test evidence. Next action: sdd-verify. No archive claim.
+
+## Virtual Stream Deck Acceptance: Task 4.2 Complete (2026-08-04)
+
+- Maintainer decision (explicit): further physical Stream Deck testing declined; the Virtual Stream Deck two-OpenCode-pane run is the acceptance authority for task 4.2. Physical hardware acceptance is waived/replaced by this decision — recorded as waived, not passed.
+- Scope: documentary persistence of already-settled acceptance evidence only — no tests, builds, installs, restarts, runtime, source/test edits, Git, or GitHub actions occurred in this slice.
+- Final native attempt settled `complete` with evidence revision `sha256:8285e0955516e1958bb934363f81f67a233328cb3392fce6f8b01c97580c4888`.
+- Two OpenCode processes on panes `%6` (PID 38347) and `%11` (PID 93000), both started after the adapter install.
+- Exactly two visible OpenCode entries, one canonical pane identity per pane; zero visible legacy/child entries — the pane-identity convergence contract holds on live state.
+- Four total visible unique entries including Claude (`%13`) and Codex (`%10`); all preserved (convergence retired only legacy OpenCode duplicates).
+- Sequence numbers and timestamps advanced after real prompts on both OpenCode panes.
+- Seven INFO-level navigations recorded; zero MISSING, CLEAR_SLOT, pane disappearance, identity collision, stale-event rejection, or fresh errors.
+- Stream Deck/plugin bundle hash and installed adapter hash matched the current bundles.
+- Tasks now 12/13; only 4.3 (work-Mac Claude install + rollback evidence) remains open. This supersedes prior statements that 4.2 requires physical hardware and the "4.2/4.3 stay unchecked" lines below.
+
+## Bounded Correction: One OpenCode Entry per tmux Pane (2026-08-04)
+
+- Maintainer decision (explicit): one OpenCode deck entry per tmux pane. Live evidence had shown 12 visible OpenCode entries — 8 child/subagent native sessions of one root on pane `%6` plus prior root generations on `%6`/`%11` persisting across OpenCode restarts — because the adapter derived deck identity from every native `sessionID` and startup reconciliation retained every record while its pane existed.
+- Canonical identity: `deriveOpenCodePaneSessionId(tmuxSession, tmuxPaneId)` in `src/adapters/adapter-environment.ts` hashes only tmux's internal identifiers (`opencode:$<session>:%<pane>`), scoped by the tmux session id so two tmux servers cannot collide on the same `%N`; never a native session id, title, or window text. Claude/Codex keep per-native-session identity unchanged.
+- Aggregated lifecycle: `OpenCodeSessionTracker` now treats all native sessions of the pane as one workload — started when the pane goes idle→busy, running while any tracked native session is active, completed/error only when none remain. One child idling or erroring while the root works emits running, never a false completed/error.
+- Convergence: `reduceEvent` converges persisted legacy OpenCode entries for the event's tmux session+pane (assigned or parked) into the single canonical entry, retiring only entries strictly older than the incoming event — a late stale legacy event can never destroy the canonical entry (caught RED by the stale-resurrection test). Other tools, other panes, and newer entries are preserved; dedupe is by identity, never title.
+- Restart safety: the adapter's sequence counter is pane-level and resets on restart; the existing timestamp-first staleness semantics let the next (fresher-timestamp) event advance — regression-covered in `tests/core/reducer.test.ts`.
+- Contract change note: the capacity test fixture now gives its sixth distinct session a distinct pane (`%8`); two OpenCode sessions on one pane legitimately converge under the new contract.
+- Strict TDD: safety net 38/38; RED 9 failures across 4 files (aggregation, identity, plugin mapping/ordering, convergence); GREEN focused 47/47 + strict typecheck; full suite 506/506. Full exact Node 24.18.0 `npm run verify` passed (exit 0): 506/506 tests, strict typecheck, production audit 0 vulnerabilities, package validation, and bounded runtime smoke; the bundled `bin/opencode-plugin.js` artifact was refreshed through this normal build/pack flow and contains the canonical pane-identity derivation. No live OpenCode/Stream Deck restart, navigation, or device mutation occurred; loading the fix on live state requires the separately authorized plugin/adapter restart (4.2 hardware scope).
+- Bounded work unit `opencode-pane-identity`: ~185 changed lines (code/tests/spec) across 8 files, inside the 250-line native budget. Tasks remain 11/13; 4.2/4.3 stay unchecked.
+
+## Documentary Reconciliation: Tasks 3.1–4.1 Complete (2026-08-04)
+
+- Scope: passive reconciliation only — no tests, builds, installers, runtime, commits, pushes, or device interaction were run. Task checkboxes were reconciled against current on-disk repository evidence and previously recorded verification.
+- 3.1 verified complete: RED scenarios exist across `tests/adapters/` (privacy allowlist, prohibited-field rejection), `tests/cli/adapter-emit.test.ts` (rejection and exit-code mapping), `tests/ipc/` (timeout, capacity), `tests/persistence/` (recovery, fail-open on unreachable tmux), `tests/navigation/` (timeout, untrusted-enumeration fail-closed), and hydration tests (recovery fallback, duplicate suppression).
+- 3.2 verified complete: navigation (`src/navigation/ghostty-tmux.ts`), persistence (`src/persistence/session-state-store.ts`), reconciliation (`src/persistence/session-state-reconciler.ts`), hydration (`src/plugin/runtime.ts`, `hydrateState`/`subscribeToStateChanges`), production wiring (`src/plugin.ts`), shared CLI (`src/cli/adapter-emit.ts`), installers (`scripts/install-opencode-adapter.mjs`, `claude-code-plugin/`, `codex-plugin/`), and bounded argv-only safe commands are all on disk with covering tests.
+- 3.3 verified complete: OpenCode (`src/adapters/opencode-plugin.ts` + `npm run install:opencode`), Claude (`src/adapters/claude-hook.ts` + `claude-code-plugin/`), and Codex (`src/adapters/codex-hook.ts` + `codex-plugin/`) adapters/installers ship; the standalone bundled `bin/adapter-emit.js` is in the exact package allowlist (`scripts/check-package.mjs`) and documented in README.
+- 3.4 verified complete: ambiguity (`NAVIGATION_OUTCOME.AMBIGUOUS` aborts before any command and never acknowledges), pane release (trusted-absence MISSING semantics plus the untrusted-enumeration correction), redaction (allowlist parser; no stderr leak of raw errors), and green/read recovery are implemented and tested.
+- 4.1 verified complete: README documents install/setup, profile import, uninstall/cleanup/rollback, and troubleshooting; the package gate enforces an exact allowlist that excludes `runtime/` (endpoint/state, secrets); the profile is generated, allowlisted, and validated (`validate:profile`), guarded by `tests/readme.test.ts`, `tests/packaging.test.ts`, and `tests/profile-*.test.ts`.
+- Evidence (time-scoped, previously recorded — not re-run): handoff verify **495/495** on branch `fix/unassigned-sessions` (Engram session summary, 2026-08-04 02:26); latest bounded false-MISSING apply verify **497/497** after the untrusted-enumeration correction (section below, 2026-08-04).
+- Tasks 4.2 and 4.3 remain open: they require physical hardware (two live OpenCode sessions; work-Mac install with Claude enabled plus rollback evidence).
+- Prior statements below that claim per-tool wrapper installers or standalone CLI bundling are pending are superseded by this section. Historical "(unchecked)" labels in the TDD table refer to checkbox state at the time each slice landed.
+- Tasks are now 11/13; 4.2/4.3 intentionally unchecked.
+
+## Bounded Correction: Untrusted Pane Enumeration Must Not Become MISSING (2026-08-04)
+
+- Root cause: `exactPaneRow` silently skipped malformed rows, so a malformed or mixed `tmux list-panes` output made an existing pane look absent. Live evidence showed navigation returning `missing` for panes `%10` and `%11` while both still existed in the same tmux server, producing `CLEAR_SLOT`, unassigned sessions, and disappearing buttons. No `pane-disappeared` events had occurred.
+- Introduced an explicit parse distinction: `PANE_ENUMERATION_STATUS` (`TRUSTED`/`UNTRUSTED`) with `parsePaneEnumeration`. Absence is concluded only from a complete enumeration in which every row has exactly three control-free fields with valid `%<id>`/`$<id>`/`@<id>` identifiers. Any malformed, truncated, mixed, or control-bearing row returns `UNAVAILABLE` — fail closed: no navigation, no absence claim, no slot clearing.
+- Legitimate `MISSING` is preserved only for trustworthy complete enumerations that prove absence (empty enumeration, pane absent, pane in another session, pane in another window). `%12` genuinely absent still releases correctly.
+- `handlePhysicalKeyDown` already keeps the current assignment for `UNAVAILABLE`/`AMBIGUOUS`; the new controller regression proves untrusted evidence never clears the slot, never unassigns the session, and never acknowledges an unread response.
+- Logging cleanup: the permanent normal navigation outcome record moved from `logger.error` to `logger.info` (`SessionSlotLogger` gained `info`; production wires `streamDeck.logger.info`). Actual failures (`UNAVAILABLE`/`AMBIGUOUS`/rejected navigation) remain observable at error via `SESSION_SLOT_NAVIGATION_ERROR`.
+- Strict TDD: safety net 15/15; RED — untrusted-enumeration test failed with `missing` instead of `unavailable`, and the info-level outcome assertion failed (error used instead); GREEN — focused 47/47 + strict typecheck; triangulation across 7 untrusted variants and 4 trustworthy-absence variants; no refactor needed.
+- Full exact Node 24.18.0 `npm run verify` passed: 497/497 tests, typecheck, production audit, package validation, and bounded runtime smoke (exit 0). No live navigation, Stream Deck, plugin restart, or external session/device mutation occurred.
+- Bounded work unit: 92 changed lines (77 additions, 15 deletions) across 8 files. Tasks remain 6/13; 3.1 and 3.2 remain intentionally unchecked because adapters, installers, and remaining integration work are incomplete.
+
 ## Approved Issue #33: Navigation correction — strict TDD RED same-value restart/resistant child; GREEN/refactor focused Node 24 24/24 + typecheck; argv-only hard-bounded TERM/KILL boundary, strict tmux parsing/has-session, immutable assignment ID, and exact ordered commands. Exact Node 24 verify passed 312/312; tasks remain 6/13 with 3.1/3.2 unchecked.
 
 ## Historical Native Ordinal 9 Rendering Remediation (pre-gray amendment)
@@ -24,7 +81,7 @@
 ## Current Status
 
 - **Implemented and verified**: gray is free/unassigned/disabled; green is assigned idle/read or physically acknowledged and never free; amber, red, and blue remain unchanged.
-- **Current verification**: Issue #33 navigation correction on Node 24.18.0 — focused 24/24 + typecheck and exact `npm run verify` **312/312**; no live navigation.
+- **Current verification**: Untrusted-enumeration correction on Node 24.18.0 — focused 47/47 + typecheck and exact `npm run verify` **497/497**; no live navigation.
 
 ## Native Ordinal 12 Physical Acceptance
 
@@ -49,8 +106,20 @@
 - [x] 2.1 RED: Reducer tests cover allocation, capacity, colors, physical-only acknowledgement, ordering, pane loss, immutability, and bounds.
 - [x] 2.2 GREEN: Pure five-slot reducer and injected-clock color derivation preserve work and release absent panes.
 - [x] 2.3 REFACTOR: Duplicate/staleness checks and bounded retirement behavior remain deterministic.
+- [x] 3.1 RED: Privacy, duplicate, timeout, recovery, and fail-open scenarios across adapters, CLI, IPC, persistence, navigation, and hydration (reconciled 2026-08-04).
+- [x] 3.2 GREEN: Navigation, persistence, reconciliation, hydration, production wiring, shared CLI, installers, and safe commands (reconciled 2026-08-04).
+- [x] 3.3 GREEN: OpenCode/Claude/Codex adapters and installers plus standalone bundled `adapter-emit` (reconciled 2026-08-04).
+- [x] 3.4 REFACTOR: Ambiguity safety, pane release, redaction, and green/read recovery (reconciled 2026-08-04).
+- [x] 4.1 Export/import checks and setup/cleanup/rollback documentation without runtime data or secrets (reconciled 2026-08-04).
+- [x] 4.2 Maintainer-approved Virtual Stream Deck two-OpenCode-pane acceptance; physical hardware acceptance waived/replaced by maintainer decision (evidence revision `sha256:8285e0955516e1958bb934363f81f67a233328cb3392fce6f8b01c97580c4888`, settled complete 2026-08-04).
+
+## Deferred Follow-Ups (non-blocking, excluded from the 12/12 implementation count; tracked as plain bullets, not checkboxes)
+
+- **D.1 (former 4.3)** — NOT executed, deferred: Install on work Mac with Claude enabled and record rollback evidence. Deferred by explicit maintainer decision (2026-08-04) to post-merge environment validation outside this PR; not passed, not failed. Recorded as a plain bullet (not `- [ ]`) so checkbox-based tooling counts exactly the 12 completed implementation tasks.
 
 ## Partial Task 3: Integration A + B1 + B2 + C1 + C2a + C2b + Remediation
+
+**Superseded 2026-08-04**: tasks 3.1 and 3.2 are reconciled complete — per-tool adapters/installers and the standalone bundled CLI shipped (see the reconciliation section above). The two statements below are historical.
 
 - [ ] 3.1 remains open. Navigation, adapter transport (endpoint client), pure-restore persistence, pane reconciliation, controller hydration/subscription wiring, and the shared adapter-emit CLI helper are implemented; per-tool wrapper installers remain pending.
 - [ ] 3.2 remains open. Navigation, adapter transport, persistence, reconciliation, production wiring in `src/plugin.ts`, README setup/rollback documentation, and the adapter-emit helper are implemented; per-tool wrapper installers and bundled distribution of the CLI remain pending.
@@ -138,12 +207,16 @@
 | Runtime hydration + subscription (unchecked) | `tests/plugin/session-hydration.test.ts`, `tests/plugin/runtime-hydration.test.ts` | Unit + runtime | Node 24 baseline 349/349 | Missing hydrateState/subscribeToStateChanges → 7 tests fail; runtime hydration mocks → 4 tests fail | 7/7 controller + 5/5 runtime | Hydration order before publish, reconcile-through-load, subscriber dedupe/unsubscribe/rejection containment, hydration failure fallback | Full verify 361/361 |
 | Production wiring + README (unchecked) | `tests/scaffold.test.ts`, `tests/readme.test.ts` | Integration + docs | Node 24 baseline 361/361 | scaffold mock missing `derivePluginRootFromBundledModuleUrl`; missing README | Scaffold restored 5/5, README 6/6 | `src/plugin.ts` builds persistence when `process.getuid` is available, docs guard install/uninstall/rollback/privacy | Full verify 367/367 |
 | Adapter emit CLI (unchecked) | `tests/cli/adapter-emit.test.ts`, `tests/readme.test.ts` | Unit + docs guard | Node 24 baseline 367/367 | Missing module → suite fails | 12/12 CLI + 7/7 README | Flag allowlist, prohibited-field rejection, event re-validation, exit code mapping, no stderr leak, README documents tsx form and exit codes | Full verify 380/380 |
+| Untrusted-enumeration correction (unchecked) | `tests/navigation/ghostty-tmux.test.ts`, `tests/actions/session-slot.integration.test.ts` | Unit + action/controller integration | Node 24 baseline 15/15 | Untrusted/mixed enumeration returned `missing`; outcome record used error level | Focused 47/47 + typecheck | 7 untrusted variants fail closed as UNAVAILABLE; 4 trustworthy-absence variants stay MISSING; UNAVAILABLE keeps assignment/unread; outcomes at info, failures stay error | Full Node 24 verify 497/497 |
+| OpenCode pane identity (this unit) | `tests/adapters/opencode-session.test.ts`, `tests/adapters/adapter-environment.test.ts`, `tests/adapters/opencode-plugin.test.ts`, `tests/core/reducer.test.ts` | Unit | Node 24 baseline 38/38 | 9 RED failures: child idle completed a busy pane, native-session identity, per-session sequencing, no convergence | Focused 47/47 + typecheck | child/root × busy/idle/error aggregation; pane/session identity scope; stale legacy event cannot destroy canonical entry; cross-tool/other-pane preservation; restart sequence reset advances via timestamp | Full suite 506/506; exact Node 24 verify below |
+| Virtual Stream Deck acceptance (4.2) | Documentary acceptance — no code/tests run in this slice | N/A (acceptance evidence, not a TDD unit) | N/A | N/A | Settled `complete`, evidence revision `sha256:8285e0955516e1958bb934363f81f67a233328cb3392fce6f8b01c97580c4888` | Two canonical OpenCode entries on `%6`/`%11`, four unique entries total (Claude `%13`, Codex `%10` preserved), sequences/timestamps advanced, 7 INFO navigations, zero MISSING/CLEAR_SLOT/collision/stale rejection/errors; plugin and adapter hashes matched current bundles |
 
 ## State
 
-- Six of thirteen tasks are complete; tasks 3.1–4.3 remain unchecked.
-- Preserve the task checkbox state until the deferred integration work is actually complete.
+- Implementation tasks are 12/12 complete after the 2026-08-04 deferred-validation reclassification; the former task 4.3 is now non-blocking deferred follow-up D.1 (work-Mac install with Claude enabled + rollback evidence), explicitly deferred by the maintainer to post-merge validation outside this PR. This supersedes the prior twelve-of-thirteen statements below and the "Next: execute 4.3" statement in the Virtual Stream Deck acceptance section.
+- **Physical acceptance for 4.2**: waived/replaced by explicit maintainer decision in favor of Virtual Stream Deck acceptance — recorded as waived, not passed.
 - **Historical pre-ordinal-11 amendment statement**: The clarified occupancy contract was pending implementation before ordinal 11; it is superseded by the implemented and verified current status above.
 - **Applied requirement amendment**: The clarified occupancy contract now renders semantic gray `#6B7280` for all unassigned slots, including startup/restart and immediate pane release; green remains assigned/read only. Tasks remain intentionally unchecked.
 - **Review Workload Forecast: Approved.** Maintainer `roger6vi` approved one remaining `single-pr-default` with `size:exception` capped at 1,600 changed lines. Actual final Git count: 1,580 changed lines (1,527 additions, 53 deletions), including 1,067 code/tests and 513 OpenSpec lines.
 - Historical pre-ordinal-11 Node 24.18.0 verification passed 298/298 tests, typecheck, production audit (0 vulnerabilities), package validation, and runtime smoke.
+- **Next action**: sdd-verify. No archive claim. Deferred follow-up D.1 (former 4.3) remains open as external post-merge environment validation and is not part of the verify scope.

@@ -90,6 +90,7 @@ export interface SessionSlotScheduler {
 
 export interface SessionSlotLogger {
   error(message: string): void;
+  info(message: string): void;
 }
 
 export interface SessionSlotInspector {
@@ -113,6 +114,7 @@ const productionControllerOptions: SessionSlotControllerOptions = {
   },
   logger: {
     error: (message) => streamDeck.logger.error(message),
+    info: (message) => streamDeck.logger.info(message),
   },
   navigator: ghosttyTmuxNavigator,
   windowNameResolver: createTmuxWindowNameResolver(),
@@ -276,7 +278,9 @@ export class SessionSlotController {
       this.#logNavigationFailure();
       return;
     }
-    try { this.options.logger.error(navigationOutcomeMessage(outcome, target)); } catch { /* observability must never break navigation */ }
+    // A normal outcome is a permanent record, not a failure: it stays at info
+    // so error remains reserved for actual navigation failures.
+    try { this.options.logger.info(navigationOutcomeMessage(outcome, target)); } catch { /* observability must never break navigation */ }
     if (outcome === NAVIGATION_OUTCOME.UNAVAILABLE || outcome === NAVIGATION_OUTCOME.AMBIGUOUS) {
       // Both abort before a single tmux command runs. Acknowledging here would
       // tell the user they have seen a response they were never shown.

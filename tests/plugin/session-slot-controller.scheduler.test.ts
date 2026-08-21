@@ -27,7 +27,7 @@ interface Timer {
 interface Fixture {
   readonly clock: { now: () => number };
   readonly scheduler: { schedule: (callback: () => void, delayMs: number) => Timer; cancel: (timer: Timer) => void };
-  readonly logger: { error: ReturnType<typeof vi.fn<(message: string) => void>> };
+  readonly logger: { error: ReturnType<typeof vi.fn<(message: string) => void>>; info: ReturnType<typeof vi.fn<(message: string) => void>> };
   readonly timers: Timer[];
   setNow(now: number): void;
   runDue(): void;
@@ -49,7 +49,7 @@ function fixture(): Fixture {
       },
       cancel: (timer) => { timer.cancelled = true; },
     },
-    logger: { error: vi.fn<(message: string) => void>() },
+    logger: { error: vi.fn<(message: string) => void>(), info: vi.fn<(message: string) => void>() },
     timers,
     setNow: (value) => { now = value; },
     runDue: () => timers.filter((timer) => !timer.cancelled && timer.deadline <= now).forEach((timer) => {

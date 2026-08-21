@@ -30,13 +30,30 @@ Actual C2 pre-PR remediation candidate: 1,580 changed lines (1,527 additions, 53
 
 ## Phase 3: Integration and Local Boundaries
 
-- [ ] 3.1 RED: Navigation sub-slice is complete; adapter, recovery, privacy, timeout, duplicate, and fail-open scenarios remain pending.
-- [ ] 3.2 GREEN: Navigation sub-slice is complete; persistence, adapters, installers, and remaining safe commands remain pending.
-- [ ] 3.3 GREEN: Implement optional Codex/OpenCode/Claude adapters and installers; emit only normalized metadata and fail under 200ms.
-- [ ] 3.4 REFACTOR: Verify ambiguity safety, pane release, redaction, and green/read recovery.
+- [x] 3.1 RED: Privacy, duplicate, timeout, recovery, and fail-open scenarios across adapters, CLI, IPC, persistence, navigation, and hydration. Reconciled complete 2026-08-04 against current tests.
+- [x] 3.2 GREEN: Navigation, persistence, reconciliation, hydration, production wiring, shared CLI, installers, and safe commands implemented. Reconciled complete 2026-08-04.
+- [x] 3.3 GREEN: Optional Codex/OpenCode/Claude adapters and installers emit only normalized metadata and fail under 200ms; standalone bundled `adapter-emit` ships in the package allowlist. Reconciled complete 2026-08-04.
+- [x] 3.4 REFACTOR: Ambiguity safety, pane release, redaction, and green/read recovery verified. Reconciled complete 2026-08-04.
 
 ## Phase 4: Acceptance and Documentation
 
-- [ ] 4.1 Add export/import checks and local setup/cleanup/rollback documentation without runtime data or secrets.
-- [ ] 4.2 Hardware-test two OpenCode sessions.
-- [ ] 4.3 Install on work Mac with Claude enabled and record rollback evidence.
+- [x] 4.1 Export/import checks and local setup/cleanup/rollback documentation without runtime data or secrets. Reconciled complete 2026-08-04 against README, package allowlist, and profile validation.
+- [x] 4.2 Maintainer-approved Virtual Stream Deck acceptance with two OpenCode panes (replaces the original physical-hardware test; physical acceptance explicitly waived/replaced by maintainer decision, not passed). Settled complete 2026-08-04 with evidence revision `sha256:8285e0955516e1958bb934363f81f67a233328cb3392fce6f8b01c97580c4888`.
+
+## Deferred environment validation (non-blocking follow-up, excluded from the implementation task count)
+
+> Maintainer decision (explicit, 2026-08-04): the former task 4.3 is deferred to post-merge environment validation outside the scope of this PR, so the change can advance to verify/Judgment Day/PR without blocking on the physical work-Mac environment.
+>
+> Rationale: the item requires maintainer-owned physical hardware (work Mac) and is environment validation, not implementation work. All implementation, test, and virtual acceptance evidence for the in-scope work is already settled.
+>
+> Status: NOT executed — not passed, not failed. It MUST NOT be claimed as passed by verify, Judgment Day, or the PR.
+>
+> Tracking note: this follow-up is intentionally recorded as a plain bullet, NOT a `- [ ]` checkbox, so checkbox-based tooling counts exactly the 12 implementation tasks (all `[x]`) and zero pending.
+
+- **D.1 (former 4.3)** — NOT executed, deferred: Install on work Mac with Claude enabled and record rollback evidence. Deferred by explicit maintainer decision (2026-08-04) to post-merge environment validation outside this PR; not passed, not failed; excluded from the 12/12 implementation count.
+
+## State
+
+- Implementation tasks: 12/12 complete (1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 3.1, 3.2, 3.3, 3.4, 4.1, 4.2). The deferred work-Mac validation (D.1, former 4.3) is excluded from this count and remains visible and traceable above as a non-blocking follow-up.
+- Scope acceptance: current scope is complete based on the maintainer-approved Virtual Stream Deck acceptance (task 4.2, evidence revision `sha256:8285e0955516e1958bb934363f81f67a233328cb3392fce6f8b01c97580c4888`) plus all previously recorded implementation/test evidence. Physical hardware acceptance for 4.2 was waived/replaced by maintainer decision — recorded as waived, not passed.
+- Next action: sdd-verify. No archive claim.

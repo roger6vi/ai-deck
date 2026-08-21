@@ -56,7 +56,7 @@ function controllerWith(names: Record<string, string | undefined>): { readonly c
   const options: SessionSlotControllerOptions = {
     clock: { now: () => 0 },
     scheduler: { schedule: () => undefined, cancel: () => undefined },
-    logger: { error: vi.fn() },
+    logger: { error: vi.fn(), info: vi.fn() },
     windowNameResolver: resolver,
   };
   return { controller: new SessionSlotController(options), resolver };

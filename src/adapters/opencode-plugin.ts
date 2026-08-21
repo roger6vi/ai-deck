@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { join } from "node:path";
 
 import {
-  deriveAdapterSessionId,
+  deriveOpenCodePaneSessionId,
   resolveAdapterEnvironment,
   type AdapterEnvironment,
 } from "./adapter-environment";
@@ -30,10 +30,12 @@ export function createOpenCodePluginHooks(environment: AdapterEnvironment, spawn
    * The emit CLI stamps its timestamp inside the spawned child, and OpenCode
    * ends a turn with `busy` and `idle` milliseconds apart. Node startup jitter
    * alone can invert those two stamps, and the plugin then discards the later
-   * lifecycle as stale — leaving the key amber forever. A per-session counter
-   * gives it an ordering that does not depend on process scheduling.
+   * lifecycle as stale — leaving the key amber forever. A pane-level counter
+   * gives every native session of the pane one ordering that does not depend
+   * on process scheduling. After an adapter restart the counter resets, and
+   * the fresh event timestamp is what lets the deck advance again.
    */
-  const sequences = new Map<string, number>();
+  let sequence = 0;
   const tracker = new OpenCodeSessionTracker();
   const ready = environment.pluginRoot !== undefined && environment.paneId !== undefined && environment.tmuxSession !== undefined;
   return {
@@ -46,14 +48,11 @@ export function createOpenCodePluginHooks(environment: AdapterEnvironment, spawn
       const paneId = environment.paneId;
       const tmuxSession = environment.tmuxSession;
       if (pluginRoot === undefined || paneId === undefined || tmuxSession === undefined) return;
-      const sessionId = event.properties?.sessionID;
-      if (sessionId === undefined) return;
-      const sequence = (sequences.get(sessionId) ?? 0) + 1;
-      sequences.set(sessionId, sequence);
+      sequence += 1;
       const child = spawnProcess(environment.nodeBinary, [
         join(pluginRoot, "bin", "adapter-emit.js"),
         "--source", OPENCODE_ADAPTER_SOURCE,
-        "--session-id", deriveAdapterSessionId(sessionId),
+        "--session-id", deriveOpenCodePaneSessionId(tmuxSession, paneId),
         "--lifecycle", lifecycle,
         "--pane-id", paneId,
         "--session", tmuxSession,

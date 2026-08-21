@@ -12,6 +12,7 @@ import {
   LOCAL_AGENT_TOOL,
   SESSION_STATUS,
   type LocalAgentStatusEvent,
+  type LocalAgentTool,
 } from "../../src/core/types";
 
 const FIVE_MINUTES = 5 * 60 * 1000;
@@ -31,6 +32,7 @@ interface EventOptions {
   readonly lifecycle?: typeof SESSION_STATUS[keyof typeof SESSION_STATUS];
   readonly sequence?: number;
   readonly sessionId?: string;
+  readonly source?: typeof LOCAL_AGENT_TOOL[keyof typeof LOCAL_AGENT_TOOL];
   readonly timestamp?: number;
   readonly tmuxPaneId?: string;
 }
@@ -40,7 +42,7 @@ function event(options: EventOptions = {}): LocalAgentStatusEvent {
   return {
     schemaVersion: 1,
     eventId: `de305d54-75b4-431b-adb2-eb6b9e5460${eventNumber.toString().padStart(2, "0")}`,
-    source: LOCAL_AGENT_TOOL.OPENCODE,
+    source: options.source ?? LOCAL_AGENT_TOOL.OPENCODE,
     sessionId: options.sessionId ?? SESSION_IDS[0],
     sequence: options.sequence ?? eventNumber,
     timestamp: options.timestamp ?? eventNumber,
@@ -78,7 +80,7 @@ describe("session status reducer", () => {
     expect(state.slots[0]?.target?.tmuxPaneId).toBe("%4");
     expect(state.slots[1]?.target?.tmuxPaneId).toBe("%2");
 
-    const full = apply(state, event({ eventNumber: 7, sessionId: SESSION_IDS[5] }));
+    const full = apply(state, event({ eventNumber: 7, sessionId: SESSION_IDS[5], tmuxPaneId: "%8" }));
     expect(assignedIds(full)).toEqual([...SESSION_IDS.slice(0, SLOT_COUNT)]);
     expect(full.unassignedSessions.map((session) => session.sessionId)).toEqual([SESSION_IDS[5]]);
 
@@ -421,5 +423,77 @@ describe("session status reducer", () => {
     for (const invalidIndex of [-1, SLOT_COUNT, 0.5, Number.NaN]) {
       expect(reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.MOVE_SESSION, sessionId: SESSION_IDS[0], slotIndex: invalidIndex })).toBe(state);
     }
+  });
+
+  it("advances on a newer timestamp even when a restarted adapter reset its sequence counter", () => {
+    const running = apply(createSessionState(), event({ sequence: 50, timestamp: 100 }));
+
+    const advanced = apply(running, event({ eventNumber: 2, lifecycle: SESSION_STATUS.COMPLETED, sequence: 1, timestamp: 101 }));
+
+    expect(advanced).not.toBe(running);
+    expect(advanced.slots[0]?.lifecycle).toBe(SESSION_STATUS.COMPLETED);
+    expect(advanced.slots[0]?.lastSequence).toBe(1);
+  });
+
+  it("converges legacy OpenCode generations of one pane into the single canonical entry", () => {
+    // Persisted pre-fix state: two legacy generations on pane %6 (a root and
+    // its child, one parked off its key), one OpenCode entry on another pane,
+    // and a Claude entry sharing pane %6.
+    const legacySlot = (index: number, sessionId: string, source: LocalAgentTool, tmuxPaneId: string) => ({
+      index,
+      assignmentId: `assignment-${sessionId.slice(0, 8)}`,
+      sessionId,
+      source,
+      lifecycle: SESSION_STATUS.COMPLETED,
+      target: { tmuxPaneId, tmuxSession: "$0", ghosttyBundleId: "com.mitchellh.ghostty" },
+      lastEventId: `legacy-event-${sessionId.slice(0, 8)}`,
+      lastTimestamp: 100,
+    });
+    const { index: _parkedIndex, ...parkedLegacy } = legacySlot(5, SESSION_IDS[5], LOCAL_AGENT_TOOL.OPENCODE, "%6");
+    const state = {
+      slots: [
+        legacySlot(0, SESSION_IDS[0], LOCAL_AGENT_TOOL.OPENCODE, "%6"),
+        legacySlot(1, SESSION_IDS[1], LOCAL_AGENT_TOOL.OPENCODE, "%6"),
+        legacySlot(2, SESSION_IDS[2], LOCAL_AGENT_TOOL.OPENCODE, "%11"),
+        legacySlot(3, SESSION_IDS[3], LOCAL_AGENT_TOOL.CLAUDE, "%6"),
+        { index: 4 },
+      ],
+      unassignedSessions: [parkedLegacy],
+      retiredSessions: [],
+    };
+
+    const converged = apply(state, event({ eventNumber: 5, sessionId: SESSION_IDS[4], tmuxPaneId: "%6", timestamp: 200 }));
+
+    expect(converged.slots.filter((slot) => slot.sessionId !== undefined).map((slot) => slot.sessionId)).toEqual([SESSION_IDS[4], SESSION_IDS[2], SESSION_IDS[3]]);
+    expect(converged.unassignedSessions).toHaveLength(0);
+    expect(converged.retiredSessions.map((session) => session.sessionId)).toEqual(expect.arrayContaining([SESSION_IDS[0], SESSION_IDS[1], SESSION_IDS[5]]));
+    expect(converged.retiredSessions.some((session) => session.sessionId === SESSION_IDS[3])).toBe(false);
+
+    // A stale event from a replaced generation must not resurrect its entry.
+    const stale = apply(converged, event({ eventNumber: 6, sessionId: SESSION_IDS[0], tmuxPaneId: "%6", timestamp: 50 }));
+    expect(stale).toBe(converged);
+  });
+
+  it("never converges other tools or other panes on a non-OpenCode event", () => {
+    const legacySlot = (index: number, sessionId: string, tmuxPaneId: string) => ({
+      index,
+      assignmentId: `assignment-${sessionId.slice(0, 8)}`,
+      sessionId,
+      source: LOCAL_AGENT_TOOL.OPENCODE,
+      lifecycle: SESSION_STATUS.COMPLETED,
+      target: { tmuxPaneId, tmuxSession: "$0", ghosttyBundleId: "com.mitchellh.ghostty" },
+      lastEventId: `legacy-event-${sessionId.slice(0, 8)}`,
+      lastTimestamp: 100,
+    });
+    const state = {
+      slots: [legacySlot(0, SESSION_IDS[0], "%6"), legacySlot(1, SESSION_IDS[1], "%6"), { index: 2 }, { index: 3 }, { index: 4 }],
+      unassignedSessions: [],
+      retiredSessions: [],
+    };
+
+    const afterClaude = apply(state, event({ eventNumber: 3, sessionId: SESSION_IDS[2], tmuxPaneId: "%6", source: LOCAL_AGENT_TOOL.CLAUDE, timestamp: 200 }));
+
+    expect(afterClaude.slots.filter((slot) => slot.sessionId !== undefined)).toHaveLength(3);
+    expect(afterClaude.retiredSessions).toHaveLength(0);
   });
 });

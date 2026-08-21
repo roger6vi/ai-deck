@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { AdapterEnvironment } from "../../src/adapters/adapter-environment";
+import { deriveOpenCodePaneSessionId, type AdapterEnvironment } from "../../src/adapters/adapter-environment";
 import { createOpenCodePluginHooks, type OpenCodeSpawn } from "../../src/adapters/opencode-plugin";
 
 const environment: AdapterEnvironment = {
@@ -47,14 +47,31 @@ describe("createOpenCodePluginHooks", () => {
     expect(Number(flagOf(calls[1] ?? [], "--timestamp"))).toBeGreaterThanOrEqual(Number(flagOf(calls[0] ?? [], "--timestamp")));
   });
 
-  it("counts each session on its own", async () => {
+  it("maps every native session of one pane to the single canonical pane identity", async () => {
+    const { calls, spawn } = recorder();
+    const hooks = createOpenCodePluginHooks(environment, spawn);
+
+    await hooks.event({ event: busy("ses_root") });
+    await hooks.event({ event: busy("ses_child") });
+    await hooks.event({ event: idle("ses_child") });
+
+    const canonical = deriveOpenCodePaneSessionId("$0", "%3");
+    expect(calls).toHaveLength(3);
+    for (const args of calls) {
+      expect(flagOf(args, "--session-id")).toBe(canonical);
+    }
+    expect(flagOf(calls[1] ?? [], "--lifecycle")).toBe("running");
+    expect(flagOf(calls[2] ?? [], "--lifecycle")).toBe("running");
+  });
+
+  it("numbers events per pane so interleaved native sessions stay ordered", async () => {
     const { calls, spawn } = recorder();
     const hooks = createOpenCodePluginHooks(environment, spawn);
 
     await hooks.event({ event: busy("ses_1") });
     await hooks.event({ event: busy("ses_2") });
 
-    expect(flagOf(calls[0] ?? [], "--sequence")).toBe(flagOf(calls[1] ?? [], "--sequence"));
+    expect(Number(flagOf(calls[1] ?? [], "--sequence"))).toBeGreaterThan(Number(flagOf(calls[0] ?? [], "--sequence")));
   });
 
   it("emits nothing when the session runs outside tmux", async () => {
