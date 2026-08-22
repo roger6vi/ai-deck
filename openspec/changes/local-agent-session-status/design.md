@@ -44,7 +44,7 @@ Persist only non-sensitive `state-snapshot.json` with slot targets and last read
 | Path | Action | Purpose |
 |---|---|---|
 | `package.json`, `.nvmrc`, `tsconfig.json`, `rollup.config.ts`, `vitest.config.ts` | Create | Node 24 strict TS package. |
-| `com.gentleman.ai-deck.sdPlugin/manifest.json`, `Profiles/Local Agent Status.sdProfile`, `assets/*` | Create | SDK v2 plugin, original-device profile, assets. |
+| `io.github.roger6vi.ai-deck.sdPlugin/manifest.json`, `Profiles/Local Agent Status.sdProfile`, `assets/*` | Create | SDK v2 plugin, original-device profile, assets. |
 | `src/core/{types,events,reducer,colors}.ts` | Create | Deterministic state and privacy contract. |
 | `src/plugin.ts`, `src/plugin/runtime.ts`, `src/plugin/session-slot-controller.ts` | Create | Entry validation, SDK lifecycle, runtime bootstrap, and normalized event routing. |
 | `src/ipc/local-event-server.ts`, `src/ipc/endpoint-discovery.ts` | Create | Bounded authenticated loopback ingest and trusted atomic endpoint publication. |

@@ -1,5 +1,5 @@
 const SESSION_SLOT_ACTION = {
-  UUID: "com.gentleman.ai-deck.session-slot",
+  UUID: "io.github.roger6vi.ai-deck.session-slot",
 } as const;
 
 // Manifest and runtime constants are duplicated external contracts enforced by tests/delivery.test.ts.

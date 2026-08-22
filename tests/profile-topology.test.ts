@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const PROFILE_PATH = new URL(
-  "../com.gentleman.ai-deck.sdPlugin/Profiles/Local%20Agent%20Status.streamDeckProfile",
+  "../io.github.roger6vi.ai-deck.sdPlugin/Profiles/Local%20Agent%20Status.streamDeckProfile",
   import.meta.url,
 );
 const TOPOLOGY_MODULE = new URL("../scripts/profile-topology.mjs", import.meta.url).href;

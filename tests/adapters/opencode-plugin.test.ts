@@ -4,7 +4,7 @@ import { deriveOpenCodePaneSessionId, type AdapterEnvironment } from "../../src/
 import { createOpenCodePluginHooks, type OpenCodeSpawn } from "../../src/adapters/opencode-plugin";
 
 const environment: AdapterEnvironment = {
-  pluginRoot: "/plugins/com.gentleman.ai-deck.sdPlugin",
+  pluginRoot: "/plugins/io.github.roger6vi.ai-deck.sdPlugin",
   paneId: "%3",
   tmuxSession: "$0",
   nodeBinary: "node",

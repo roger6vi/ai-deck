@@ -9,7 +9,7 @@ import {
 import { validateCanonicalProfileTopology } from "./profile-topology.mjs";
 
 const defaultProfilePath = fileURLToPath(
-  new URL("../com.gentleman.ai-deck.sdPlugin/Profiles/Local%20Agent%20Status.streamDeckProfile", import.meta.url),
+  new URL("../io.github.roger6vi.ai-deck.sdPlugin/Profiles/Local%20Agent%20Status.streamDeckProfile", import.meta.url),
 );
 const profilePath = process.argv[2] ?? defaultProfilePath;
 

@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 
 export const MAX_CANONICAL_PROFILE_ARCHIVE_BYTES = 64 * 1024;
-export const CANONICAL_PROFILE_ARCHIVE_BYTES = 1099;
-export const CANONICAL_PROFILE_ARCHIVE_SHA256 = "2e18701273a17ba81c3f8d72aa5a3c4a0b7912ace4e7271fe3f243a213199a50";
+export const CANONICAL_PROFILE_ARCHIVE_BYTES = 1102;
+export const CANONICAL_PROFILE_ARCHIVE_SHA256 = "42227f7286a1855096d9f7eed3e6608652183fa40bf16ada6a5c3c788cebe9ec";
 
 /** Validates the exact generated delivery artifact, not arbitrary user-edited profiles. */
 export async function validateProfileArchive(bytes) {

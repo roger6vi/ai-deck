@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const BUNDLED_ADAPTER = join("com.gentleman.ai-deck.sdPlugin", "bin", "opencode-plugin.js");
+const BUNDLED_ADAPTER = join("io.github.roger6vi.ai-deck.sdPlugin", "bin", "opencode-plugin.js");
 const TARGET_DIRECTORY = join(homedir(), ".config", "opencode", "plugins");
 const TARGET_FILE = "ai-deck.js";
 

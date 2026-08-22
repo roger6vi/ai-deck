@@ -28,7 +28,7 @@ function isDirectCliInvocation(moduleUrl, entryPath, cwd = process.cwd()) {
     return realPathOf(resolve(cwd, entryPath)) === realPathOf(resolve(fileURLToPath(moduleUrl)));
 }
 
-const INSTALLED_PLUGIN_ROOT = join(homedir(), "Library", "Application Support", "com.elgato.StreamDeck", "Plugins", "com.gentleman.ai-deck.sdPlugin");
+const INSTALLED_PLUGIN_ROOT = join(homedir(), "Library", "Application Support", "com.elgato.StreamDeck", "Plugins", "io.github.roger6vi.ai-deck.sdPlugin");
 function deriveAdapterSessionId(nativeSessionId) {
     const hex = createHash("sha256").update(nativeSessionId, "utf8").digest("hex");
     const variant = ["8", "9", "a", "b"][parseInt(hex[16] ?? "0", 16) % 4] ?? "8";

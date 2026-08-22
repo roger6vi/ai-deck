@@ -5,7 +5,7 @@ import { deriveAdapterSessionId } from "../../src/adapters/adapter-environment";
 import { buildClaudeHookArgv, CLAUDE_HOOK_EXIT_CODE, runClaudeHook } from "../../src/adapters/claude-hook";
 
 const environment: AdapterEnvironment = {
-  pluginRoot: "/plugins/com.gentleman.ai-deck.sdPlugin",
+  pluginRoot: "/plugins/io.github.roger6vi.ai-deck.sdPlugin",
   paneId: "%3",
   tmuxSession: "$0",
   nodeBinary: "node",

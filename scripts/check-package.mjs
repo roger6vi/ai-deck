@@ -2,8 +2,8 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { Uint8ArrayReader, ZipReader } from "@zip.js/zip.js";
 
-const PACKAGE_PATH = "dist/com.gentleman.ai-deck.streamDeckPlugin";
-const PACKAGE_ROOT = "com.gentleman.ai-deck.sdPlugin/";
+const PACKAGE_PATH = "dist/io.github.roger6vi.ai-deck.streamDeckPlugin";
+const PACKAGE_ROOT = "io.github.roger6vi.ai-deck.sdPlugin/";
 const EXPECTED_FILES = [
   "manifest.json",
   "bin/package.json",

@@ -23,18 +23,25 @@ describe("README setup and rollback documentation", () => {
     }
   });
 
+  it("documents one-time cleanup of the pre-release plugin identity", async () => {
+    const readme = await readReadme();
+    expect(readme).toContain("com.gentleman.ai-deck");
+    expect(readme).toContain("io.github.roger6vi.ai-deck");
+    expect(readme).toMatch(/not migrated automatically/i);
+  });
+
   it("documents the uninstall command and the runtime/dist cleanup paths", async () => {
     const readme = await readReadme();
     expect(readme).toContain("npm run uninstall:plugin");
-    expect(readme).toContain("com.gentleman.ai-deck.sdPlugin/bin");
-    expect(readme).toContain("com.gentleman.ai-deck.sdPlugin/runtime");
+    expect(readme).toContain("io.github.roger6vi.ai-deck.sdPlugin/bin");
+    expect(readme).toContain("io.github.roger6vi.ai-deck.sdPlugin/runtime");
     expect(readme).toContain("dist");
   });
 
   it("documents rollback via restoring the previously packaged plugin directory", async () => {
     const readme = await readReadme();
     expect(readme).toMatch(/roll ?back/i);
-    expect(readme).toContain("com.gentleman.ai-deck.sdPlugin");
+    expect(readme).toContain("io.github.roger6vi.ai-deck.sdPlugin");
   });
 
   it("names the privacy boundary and points to the event contract module", async () => {
