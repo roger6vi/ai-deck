@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { SESSION_SLOT_ACTION_UUID } from "../src/actions/session-slot.constants";
 
 const PROJECT_ROOT = fileURLToPath(new URL("..", import.meta.url));
-const ASSETS_DIRECTORY = resolve(PROJECT_ROOT, "com.gentleman.ai-deck.sdPlugin/assets");
+const ASSETS_DIRECTORY = resolve(PROJECT_ROOT, "io.github.roger6vi.ai-deck.sdPlugin/assets");
 const ASSET_DIMENSIONS = {
   "plugin.png": 256,
   "plugin@2x.png": 512,
@@ -99,11 +99,13 @@ afterEach(async () => {
 describe("plugin delivery contract", () => {
   it("keeps the manifest action contract and asset paths", async () => {
     const manifest = JSON.parse(
-      await readFile(resolve(PROJECT_ROOT, "com.gentleman.ai-deck.sdPlugin/manifest.json"), "utf8"),
+      await readFile(resolve(PROJECT_ROOT, "io.github.roger6vi.ai-deck.sdPlugin/manifest.json"), "utf8"),
     ) as Record<string, unknown>;
     const actions = manifest.Actions as Array<Record<string, unknown>>;
     const action = actions[0];
     if (!action) throw new Error("Manifest must contain its reserved action.");
+    expect(manifest.UUID).toBe("io.github.roger6vi.ai-deck");
+    expect(manifest.Author).toBe("Roger Vallverdú");
     expect(manifest.CodePath).toBe("bin/plugin.js");
     expect(actions).toHaveLength(1);
     expect(action).toMatchObject({

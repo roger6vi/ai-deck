@@ -4,7 +4,7 @@ import { access, mkdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const PLUGIN_DIRECTORY = "com.gentleman.ai-deck.sdPlugin";
+const PLUGIN_DIRECTORY = "io.github.roger6vi.ai-deck.sdPlugin";
 
 async function exists(path) {
   return access(path).then(() => true, () => false);

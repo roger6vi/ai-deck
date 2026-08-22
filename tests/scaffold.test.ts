@@ -15,7 +15,7 @@ const runtimeMock = vi.hoisted(() => ({
   stop: vi.fn<() => Promise<void>>(),
 }));
 const VALID_LAUNCH_ARGUMENTS = [
-  process.execPath, "plugin.js", "-port", "28174", "-pluginUUID", "com.gentleman.ai-deck", "-registerEvent", "registerPlugin", "-info", "{\"application\":{}}",
+  process.execPath, "plugin.js", "-port", "28174", "-pluginUUID", "io.github.roger6vi.ai-deck", "-registerEvent", "registerPlugin", "-info", "{\"application\":{}}",
 ];
 const LAUNCH_PARAMETER_ERROR = "AI Deck launch parameter error.";
 
@@ -91,7 +91,7 @@ describe("Stream Deck plugin scaffold", () => {
   });
 
   it("exports the session-slot action UUID", () => {
-    expect(SESSION_SLOT_ACTION_UUID).toBe("com.gentleman.ai-deck.session-slot");
+    expect(SESSION_SLOT_ACTION_UUID).toBe("io.github.roger6vi.ai-deck.session-slot");
   });
 
   it("starts the local runtime, registers the action, and then connects exactly once", async () => {

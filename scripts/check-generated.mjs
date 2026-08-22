@@ -10,8 +10,8 @@ import { buildProfile } from "./build-profile.mjs";
 import { PROFILE_FILE } from "./profile-contract.mjs";
 
 const PROJECT_ROOT = fileURLToPath(new URL("..", import.meta.url));
-const ASSET_DIRECTORY = "com.gentleman.ai-deck.sdPlugin/assets";
-const PROFILE_DIRECTORY = "com.gentleman.ai-deck.sdPlugin/Profiles";
+const ASSET_DIRECTORY = "io.github.roger6vi.ai-deck.sdPlugin/assets";
+const PROFILE_DIRECTORY = "io.github.roger6vi.ai-deck.sdPlugin/Profiles";
 const ASSET_FILES = Object.freeze([
   "plugin.png",
   "plugin@2x.png",

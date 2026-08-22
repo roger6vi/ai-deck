@@ -4,14 +4,16 @@
 
 node_modules/
 coverage/
-dist/
+dist/*
 .package-stage/
 logs/
 *.tsbuildinfo
-com.gentleman.ai-deck.sdPlugin/bin/
-com.gentleman.ai-deck.sdPlugin/bin.previous/
-com.gentleman.ai-deck.sdPlugin/bin.next/
+io.github.roger6vi.ai-deck.sdPlugin/bin/
+io.github.roger6vi.ai-deck.sdPlugin/bin.previous/
+io.github.roger6vi.ai-deck.sdPlugin/bin.next/
 *.streamDeckPlugin
+!dist/io.github.roger6vi.ai-deck.streamDeckPlugin
+!dist/ai-deck-opencode.js
 runtime/
 endpoint.json
 state-snapshot.json

@@ -1,10 +1,10 @@
 {
   "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
-  "UUID": "com.gentleman.ai-deck",
+  "UUID": "io.github.roger6vi.ai-deck",
   "Name": "AI Deck",
   "Version": "0.1.0.0",
-  "Author": "Gentleman Programming",
-  "Description": "Reserved local session slots scaffold for Stream Deck.",
+  "Author": "Roger Vallverdú",
+  "Description": "Local coding-agent session status and safe tmux navigation on Stream Deck.",
   "Category": "AI Deck",
   "CategoryIcon": "assets/category-icon",
   "Icon": "assets/plugin",
@@ -25,7 +25,7 @@
   "Actions": [
     {
       "Name": "Reserved Session Slot",
-      "UUID": "com.gentleman.ai-deck.session-slot",
+      "UUID": "io.github.roger6vi.ai-deck.session-slot",
       "Icon": "assets/action",
       "Tooltip": "Content-free local session status slot.",
       "PropertyInspectorPath": "ui/session-slot.html",

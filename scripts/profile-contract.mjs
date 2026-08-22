@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import pluginManifest from "../com.gentleman.ai-deck.sdPlugin/manifest.json" with { type: "json" };
+import pluginManifest from "../io.github.roger6vi.ai-deck.sdPlugin/manifest.json" with { type: "json" };
 // Stream Deck profiles are ZIP files whose root directory ends in .sdProfile.
 const PROFILE_FILE_EXTENSION = ".streamDeckProfile";
 const PROFILE_ARCHIVE_DIRECTORY_EXTENSION = ".sdProfile";
@@ -23,7 +23,7 @@ const ACTION_ID_HASH_SLICES = Object.freeze({
   clockSequence: [17, 20],
   node: [20, 32],
 });
-export const PLUGIN_DIRECTORY = "com.gentleman.ai-deck.sdPlugin";
+export const PLUGIN_DIRECTORY = "io.github.roger6vi.ai-deck.sdPlugin";
 export const PROFILE_NAME = "Local Agent Status";
 export const PROFILE_FILE = `${PLUGIN_DIRECTORY}/${PROFILE_PAGES_DIRECTORY_NAME}/${PROFILE_NAME}${PROFILE_FILE_EXTENSION}`;
 export const SESSION_SLOT_ACTION_UUID = pluginManifest.Actions[0].UUID;

@@ -4,14 +4,14 @@ const ROOT_ENTRY = "8E61C791-8708-42EA-9891-1554B6F0B5B8.sdProfile/manifest.json
 const PAGE_ENTRY = "8E61C791-8708-42EA-9891-1554B6F0B5B8.sdProfile/Profiles/TCT463B30T74L6S1LPIEFS6ST4Z/manifest.json";
 const ENTRY_NAMES = Object.freeze([ROOT_ENTRY, PAGE_ENTRY]);
 const PAGE_ID = "eb3a430d-6307-4e4a-9b81-ae64e7f0dce9";
-const SLOT_UUID = "com.gentleman.ai-deck.session-slot";
+const SLOT_UUID = "io.github.roger6vi.ai-deck.session-slot";
 const COORDINATES = Object.freeze(["0,0", "1,0", "2,0", "3,0", "4,0"]);
 const ACTION_IDS = Object.freeze([
-  "055a7ebd-275b-5671-883b-d18d04fe3672",
-  "83b41a68-b645-5d6f-8a12-fa96ad93b45f",
-  "76e9ed66-e090-518b-8913-0176576205f7",
-  "de50ad89-b5eb-5368-8d58-42f2801c0544",
-  "c0cf6f65-1b8d-511c-8b11-99327bc6a190",
+  "d5cad140-85d7-5950-8a0f-006f806eec78",
+  "c0689340-dd29-557b-8fb9-69960a2cfc64",
+  "df72a5ec-2aaf-53e4-80db-34ce73db19ac",
+  "3ec08e95-6d5b-5a5c-8a61-986f83fc502e",
+  "11b3c78d-07ef-5f83-842a-31e64548985f",
 ]);
 const TITLES = Object.freeze([
   "Reserved Slot 1",
@@ -35,11 +35,11 @@ const STATE_KEYS = Object.freeze([
 const ROOT_CONTRACT = Object.freeze({ Device: Object.freeze({ Model: "20GAA9901", UUID: "" }), Name: "Local Agent Status", Pages: Object.freeze({ Current: PAGE_ID, Default: PAGE_ID, Pages: Object.freeze([PAGE_ID]) }), Version: "2.0" });
 const PAGE_CONTRACT = Object.freeze({
   Controllers: Object.freeze([Object.freeze({ Actions: Object.freeze({
-    "0,0": Object.freeze({ ActionID: "055a7ebd-275b-5671-883b-d18d04fe3672", LinkedTitle: true, Name: "Reserved Session Slot", Settings: Object.freeze({}), State: 0, States: Object.freeze([Object.freeze({ FontFamily: "", FontSize: 9, FontStyle: "", FontUnderline: false, OutlineThickness: 2, ShowTitle: true, Title: "Reserved Slot 1", TitleAlignment: "middle", TitleColor: "#ffffff" })]), UUID: SLOT_UUID }),
-    "1,0": Object.freeze({ ActionID: "83b41a68-b645-5d6f-8a12-fa96ad93b45f", LinkedTitle: true, Name: "Reserved Session Slot", Settings: Object.freeze({}), State: 0, States: Object.freeze([Object.freeze({ FontFamily: "", FontSize: 9, FontStyle: "", FontUnderline: false, OutlineThickness: 2, ShowTitle: true, Title: "Reserved Slot 2", TitleAlignment: "middle", TitleColor: "#ffffff" })]), UUID: SLOT_UUID }),
-    "2,0": Object.freeze({ ActionID: "76e9ed66-e090-518b-8913-0176576205f7", LinkedTitle: true, Name: "Reserved Session Slot", Settings: Object.freeze({}), State: 0, States: Object.freeze([Object.freeze({ FontFamily: "", FontSize: 9, FontStyle: "", FontUnderline: false, OutlineThickness: 2, ShowTitle: true, Title: "Reserved Slot 3", TitleAlignment: "middle", TitleColor: "#ffffff" })]), UUID: SLOT_UUID }),
-    "3,0": Object.freeze({ ActionID: "de50ad89-b5eb-5368-8d58-42f2801c0544", LinkedTitle: true, Name: "Reserved Session Slot", Settings: Object.freeze({}), State: 0, States: Object.freeze([Object.freeze({ FontFamily: "", FontSize: 9, FontStyle: "", FontUnderline: false, OutlineThickness: 2, ShowTitle: true, Title: "Reserved Slot 4", TitleAlignment: "middle", TitleColor: "#ffffff" })]), UUID: SLOT_UUID }),
-    "4,0": Object.freeze({ ActionID: "c0cf6f65-1b8d-511c-8b11-99327bc6a190", LinkedTitle: true, Name: "Reserved Session Slot", Settings: Object.freeze({}), State: 0, States: Object.freeze([Object.freeze({ FontFamily: "", FontSize: 9, FontStyle: "", FontUnderline: false, OutlineThickness: 2, ShowTitle: true, Title: "Reserved Slot 5", TitleAlignment: "middle", TitleColor: "#ffffff" })]), UUID: SLOT_UUID }),
+    "0,0": Object.freeze({ ActionID: "d5cad140-85d7-5950-8a0f-006f806eec78", LinkedTitle: true, Name: "Reserved Session Slot", Settings: Object.freeze({}), State: 0, States: Object.freeze([Object.freeze({ FontFamily: "", FontSize: 9, FontStyle: "", FontUnderline: false, OutlineThickness: 2, ShowTitle: true, Title: "Reserved Slot 1", TitleAlignment: "middle", TitleColor: "#ffffff" })]), UUID: SLOT_UUID }),
+    "1,0": Object.freeze({ ActionID: "c0689340-dd29-557b-8fb9-69960a2cfc64", LinkedTitle: true, Name: "Reserved Session Slot", Settings: Object.freeze({}), State: 0, States: Object.freeze([Object.freeze({ FontFamily: "", FontSize: 9, FontStyle: "", FontUnderline: false, OutlineThickness: 2, ShowTitle: true, Title: "Reserved Slot 2", TitleAlignment: "middle", TitleColor: "#ffffff" })]), UUID: SLOT_UUID }),
+    "2,0": Object.freeze({ ActionID: "df72a5ec-2aaf-53e4-80db-34ce73db19ac", LinkedTitle: true, Name: "Reserved Session Slot", Settings: Object.freeze({}), State: 0, States: Object.freeze([Object.freeze({ FontFamily: "", FontSize: 9, FontStyle: "", FontUnderline: false, OutlineThickness: 2, ShowTitle: true, Title: "Reserved Slot 3", TitleAlignment: "middle", TitleColor: "#ffffff" })]), UUID: SLOT_UUID }),
+    "3,0": Object.freeze({ ActionID: "3ec08e95-6d5b-5a5c-8a61-986f83fc502e", LinkedTitle: true, Name: "Reserved Session Slot", Settings: Object.freeze({}), State: 0, States: Object.freeze([Object.freeze({ FontFamily: "", FontSize: 9, FontStyle: "", FontUnderline: false, OutlineThickness: 2, ShowTitle: true, Title: "Reserved Slot 4", TitleAlignment: "middle", TitleColor: "#ffffff" })]), UUID: SLOT_UUID }),
+    "4,0": Object.freeze({ ActionID: "11b3c78d-07ef-5f83-842a-31e64548985f", LinkedTitle: true, Name: "Reserved Session Slot", Settings: Object.freeze({}), State: 0, States: Object.freeze([Object.freeze({ FontFamily: "", FontSize: 9, FontStyle: "", FontUnderline: false, OutlineThickness: 2, ShowTitle: true, Title: "Reserved Slot 5", TitleAlignment: "middle", TitleColor: "#ffffff" })]), UUID: SLOT_UUID }),
   }), Type: "Keypad" })]), Icon: "", Name: "" });
 const EXPECTED_JSON = Object.freeze({ [ROOT_ENTRY]: JSON.stringify(ROOT_CONTRACT), [PAGE_ENTRY]: JSON.stringify(PAGE_CONTRACT) });
 

@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const ENTRYPOINT = "com.gentleman.ai-deck.sdPlugin/bin/plugin.js";
+const ENTRYPOINT = "io.github.roger6vi.ai-deck.sdPlugin/bin/plugin.js";
 const LAUNCH_ERROR = "AI Deck launch parameter error.";
 const TERMINATION_GRACE_MILLISECONDS = 50;
 const ABSOLUTE_TIMEOUT_BUFFER_MILLISECONDS = 1_000;

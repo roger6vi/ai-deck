@@ -142,7 +142,7 @@ function getOutputDirectory() {
   return resolve(
     outputArgument ??
     process.env.AI_DECK_ASSET_DIRECTORY ??
-    fileURLToPath(new URL("../com.gentleman.ai-deck.sdPlugin/assets/", import.meta.url)),
+    fileURLToPath(new URL("../io.github.roger6vi.ai-deck.sdPlugin/assets/", import.meta.url)),
   );
 }
 

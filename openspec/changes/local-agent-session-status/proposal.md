@@ -40,7 +40,7 @@ Use an official Stream Deck Node plugin hosting token-authenticated `POST /event
 | Area | Impact | Description |
 |---|---|---|
 | `package.json`, `tsconfig.json`, test config | New | Node 24 TypeScript plugin scaffold. |
-| `com.gentleman.ai-deck.sdPlugin/manifest.json` | New | SDK v2, DeviceType 0, 5x3 profile. |
+| `io.github.roger6vi.ai-deck.sdPlugin/manifest.json` | New | SDK v2, DeviceType 0, 5x3 profile. |
 | `src/core/**`, `src/plugin/**` | New | State reducer, privacy boundary, rendering, HTTP ingest. |
 | `src/adapters/{codex,opencode,claude}/**` | New | Optional local adapters per Mac. |
 | `src/navigation/**`, `install/**` | New | Ghostty/tmux navigation and export helpers. |

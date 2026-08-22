@@ -15,5 +15,5 @@
     "skipLibCheck": false
   },
   "include": ["src/**/*.ts", "tests/**/*.ts", "rollup.config.ts", "vitest.config.ts"],
-  "exclude": ["node_modules", "com.gentleman.ai-deck.sdPlugin/bin"]
+  "exclude": ["node_modules", "io.github.roger6vi.ai-deck.sdPlugin/bin"]
 }

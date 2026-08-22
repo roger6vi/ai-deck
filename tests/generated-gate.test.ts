@@ -15,7 +15,7 @@ import * as profileContract from "../scripts/profile-contract.mjs";
 import { PROFILE_FILE } from "../scripts/profile-contract.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
-const ASSETS = "com.gentleman.ai-deck.sdPlugin/assets";
+const ASSETS = "io.github.roger6vi.ai-deck.sdPlugin/assets";
 const PROFILE = join(ROOT, PROFILE_FILE);
 const temporaryDirectories: string[] = [];
 const PNG_CRC32_INITIAL_VALUE = 0xffffffff;
@@ -194,7 +194,7 @@ describe("canonical envelope boundary", () => {
       "audit:production": "npm audit --omit=dev --audit-level=low",
       "check:generated": "node scripts/check-generated.mjs",
       "validate:profile": "node scripts/validate-profile.mjs",
-      "validate:plugin": "streamdeck validate com.gentleman.ai-deck.sdPlugin --no-update-check",
+      "validate:plugin": "streamdeck validate io.github.roger6vi.ai-deck.sdPlugin --no-update-check",
       verify: "npm test && npm run typecheck && npm run audit:production && npm run pack && npm run smoke:runtime",
     });
   });

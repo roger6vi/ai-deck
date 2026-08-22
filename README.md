@@ -14,32 +14,69 @@ the physical device.
 
 ## Requirements
 
-- macOS with the [Stream Deck](https://www.elgato.com/stream-deck) app
-  installed and the `streamdeck` CLI on your `PATH`.
-- Node.js **24.x** (the plugin runtime is built and verified against
-  Node 24.18.0).
+- macOS 12 or later with the [Stream Deck](https://www.elgato.com/stream-deck)
+  app 7.1 or later.
 - [Ghostty](https://ghostty.org) terminal.
 - `tmux` with your coding-agent sessions running inside it.
 - A physical Stream Deck (5+ keys). The plugin uses row 0, columns 0–4.
 
+Source builds and development also require Node.js **24.x** and the
+`streamdeck` CLI provided by the repository's pinned dependencies.
+
 ## Install
 
-For a packaged installation on a new Mac, run from the repository root:
+### One-time migration from pre-release builds
+
+Before installing v0.1.0, remove any pre-release plugin using the legacy
+`com.gentleman.ai-deck` identity. Keeping both identities installed would show
+duplicate AI Deck plugins in Stream Deck.
+
+Uninstall AI Deck in the Stream Deck app. If the legacy copy was linked for
+development, unlink and delete it first:
+
+```bash
+npm exec -- streamdeck unlink --delete com.gentleman.ai-deck
+```
+
+The new public identity is `io.github.roger6vi.ai-deck`. Pre-release local slot
+state belongs to the legacy identity, is not migrated automatically, and will
+be recreated as new agent events arrive.
+
+### Published release
+
+For a published release, open the matching version on the
+[GitHub Releases page](https://github.com/roger6vi/ai-deck/releases), download
+`io.github.roger6vi.ai-deck.streamDeckPlugin`, open it, and approve installation in
+the Stream Deck app. The `v0.1.0` release is not available until its signed tag
+and GitHub release have been created.
+
+If this Mac uses OpenCode, also download `ai-deck-opencode.js` from the same
+release and install it without a source checkout:
+
+```bash
+mkdir -p "$HOME/.config/opencode/plugins"
+if [ -f "$HOME/.config/opencode/plugins/ai-deck.js" ]; then
+  cp -p "$HOME/.config/opencode/plugins/ai-deck.js" \
+    "$HOME/.config/opencode/plugins/ai-deck.js.backup"
+fi
+install -m 0644 "$HOME/Downloads/ai-deck-opencode.js" \
+  "$HOME/.config/opencode/plugins/ai-deck.js"
+```
+
+Adjust the downloaded file path if your browser saved it elsewhere. The backup
+keeps the previous adapter available for rollback.
+
+To build the same installer and adapter from source instead:
 
 ```bash
 npm install
 npm run pack
-```
-
-`npm run pack` builds and validates the plugin, then creates
-`dist/com.gentleman.ai-deck.streamDeckPlugin`; it does not install the
-plugin. Open that installer in Finder and approve the installation in the
-Stream Deck app. If this Mac runs OpenCode, install the matching adapter from
-the same checkout:
-
-```bash
 npm run install:opencode
 ```
+
+`npm run pack` creates `dist/io.github.roger6vi.ai-deck.streamDeckPlugin`; it does
+not install the plugin. Open that file and approve it in the Stream Deck app.
+`install:opencode` is only needed on a Mac that runs OpenCode.
 
 For development, link the built `.sdPlugin` directory instead of installing
 the packaged artifact:
@@ -47,14 +84,14 @@ the packaged artifact:
 ```bash
 npm install
 npm run build
-npm exec -- streamdeck link com.gentleman.ai-deck.sdPlugin
+npm exec -- streamdeck link io.github.roger6vi.ai-deck.sdPlugin
 npm run restart:plugin
 npm run install:opencode # only when this Mac runs OpenCode
 ```
 
 `restart:plugin` starts or restarts an existing installation or development
 link; it is not a first-install command. Once running, the plugin registers
-`com.gentleman.ai-deck` with the Stream Deck host, publishes an authenticated
+`io.github.roger6vi.ai-deck` with the Stream Deck host, publishes an authenticated
 `runtime/endpoint.json` under the installed plugin root, and starts the local
 loopback server.
 
@@ -62,7 +99,7 @@ To import the bundled profile:
 
 1. Open the Stream Deck app.
 2. Right-click a profile → **Import Profile…**
-3. Select `com.gentleman.ai-deck.sdPlugin/Profiles/Local Agent Status.streamDeckProfile`.
+3. Select `io.github.roger6vi.ai-deck.sdPlugin/Profiles/Local Agent Status.streamDeckProfile`.
 
 ## Uninstall / rollback
 
@@ -70,12 +107,12 @@ To import the bundled profile:
 npm run uninstall:plugin
 ```
 
-This unlinks and deletes `com.gentleman.ai-deck` from the Stream Deck
+This unlinks and deletes `io.github.roger6vi.ai-deck` from the Stream Deck
 app. To fully clean up:
 
 ```bash
-rm -rf com.gentleman.ai-deck.sdPlugin/bin \
-       com.gentleman.ai-deck.sdPlugin/runtime \
+rm -rf io.github.roger6vi.ai-deck.sdPlugin/bin \
+       io.github.roger6vi.ai-deck.sdPlugin/runtime \
        dist
 ```
 
@@ -86,7 +123,7 @@ rm -rf com.gentleman.ai-deck.sdPlugin/bin \
 - `dist/` holds the packaged `.streamDeckPlugin` archive.
 
 To roll back to a previously packaged plugin, restore the
-`com.gentleman.ai-deck.sdPlugin` directory from your backup and run
+`io.github.roger6vi.ai-deck.sdPlugin` directory from your backup and run
 `npm run restart:plugin`.
 
 ## Troubleshooting
@@ -181,7 +218,7 @@ shell hook), use the `runAdapterEmit` helper in `src/cli/adapter-emit.ts`.
 During development you can invoke it directly:
 
 ```bash
-AI_DECK_PLUGIN_ROOT=/absolute/path/to/com.gentleman.ai-deck.sdPlugin \
+AI_DECK_PLUGIN_ROOT=/absolute/path/to/io.github.roger6vi.ai-deck.sdPlugin \
   npx tsx src/cli/adapter-emit.ts \
     --source codex \
     --session-id "$SESSION_UUID" \
@@ -202,8 +239,8 @@ The CLI is also bundled as `bin/adapter-emit.js`, a self-contained
 script any Node runtime can execute directly:
 
 ```bash
-AI_DECK_PLUGIN_ROOT=/absolute/path/to/com.gentleman.ai-deck.sdPlugin \
-  node com.gentleman.ai-deck.sdPlugin/bin/adapter-emit.js \
+AI_DECK_PLUGIN_ROOT=/absolute/path/to/io.github.roger6vi.ai-deck.sdPlugin \
+  node io.github.roger6vi.ai-deck.sdPlugin/bin/adapter-emit.js \
     --source opencode --session-id "$SESSION_UUID" \
     --lifecycle started --pane-id "%1" --session '$0'
 ```
@@ -232,12 +269,11 @@ and `AI_DECK_NODE` (Node binary used to spawn the emit CLI).
 
 ### Claude Code adapter
 
-Claude Code has no in-process plugin surface, so the bundled adapter is a
-hook script registered in `~/.claude/settings.json`: `UserPromptSubmit`
-becomes `started` (amber), `Stop` becomes `completed` (blue), and
-`SessionEnd` becomes `pane-disappeared`, which releases the key. A
-finished subagent (`SubagentStop`) is not a finished turn and emits
-nothing.
+Claude Code has no in-process plugin surface, so the bundled adapter uses
+plugin-managed hooks: `UserPromptSubmit` becomes `started` (amber), `Stop`
+becomes `completed` (blue), and `SessionEnd` becomes `pane-disappeared`, which
+releases the key. A finished subagent (`SubagentStop`) is not a finished turn
+and emits nothing.
 
 Every hook runs as a fresh process, so no state survives between
 invocations and each submitted prompt reports `started` — the deck paints
@@ -317,3 +353,7 @@ Rejected events never touch persisted state.
 | `npm run verify` | Full CI gate (tests + typecheck + audit + pack + smoke). |
 | `npm test` | Vitest suite only. |
 | `npm run typecheck` | Strict `tsc --noEmit`. |
+| `npm run release -- current` | Publish the prepared first release through the signed canonical flow. |
+
+Maintainers should read [`docs/releasing.md`](docs/releasing.md) before
+publishing or incrementing a release.

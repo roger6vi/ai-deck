@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-const PI_PATH = "com.gentleman.ai-deck.sdPlugin/ui/session-slot.html";
+const PI_PATH = "io.github.roger6vi.ai-deck.sdPlugin/ui/session-slot.html";
 
 describe("session slot property inspector page", () => {
   it("is a self-contained page listing the choices without a native popup", async () => {

@@ -3,7 +3,7 @@ import nodeResolve from "@rollup/plugin-node-resolve";
 import typescript from "@rollup/plugin-typescript";
 import type { PluginContext } from "rollup";
 
-const pluginDirectory = "com.gentleman.ai-deck.sdPlugin";
+const pluginDirectory = "io.github.roger6vi.ai-deck.sdPlugin";
 const outputDirectory = process.env.AI_DECK_OUTPUT_DIRECTORY ?? `${pluginDirectory}/bin`;
 
 /**
