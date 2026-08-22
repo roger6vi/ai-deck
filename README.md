@@ -47,8 +47,8 @@ be recreated as new agent events arrive.
 For a published release, open the matching version on the
 [GitHub Releases page](https://github.com/roger6vi/ai-deck/releases), download
 `io.github.roger6vi.ai-deck.streamDeckPlugin`, open it, and approve installation in
-the Stream Deck app. The `v0.1.0` release is not available until its signed tag
-and GitHub release have been created.
+the Stream Deck app. `v0.1.0` is available there with its signed tag and exact
+downloadable assets.
 
 If this Mac uses OpenCode, also download `ai-deck-opencode.js` from the same
 release and install it without a source checkout:
