@@ -52,19 +52,22 @@ function status(lifecycle: SessionStatus = SESSION_STATUS.STARTED, timestamp = 1
   };
 }
 
-function fixture(): { readonly controller: SessionSlotController; readonly inspector: InspectorStub } {
+function fixture(rename = vi.fn<(paneId: string, name: string) => Promise<void>>().mockResolvedValue(undefined)): { readonly controller: SessionSlotController; readonly inspector: InspectorStub; readonly rename: typeof rename; readonly logger: { error: ReturnType<typeof vi.fn> } } {
   const stub: InspectorStub = {
     sent: [],
     inspector: { sendToPropertyInspector: async (payload: unknown) => { stub.sent.push(payload); } },
   };
+  const logger = { error: vi.fn() };
+  const names = new Map<string, string>();
   const options: SessionSlotControllerOptions = {
     clock: { now: () => 0 },
     scheduler: { schedule: () => undefined, cancel: () => undefined },
-    logger: { error: vi.fn() },
-    windowNameResolver: { resolve: async () => undefined },
+    logger,
+    windowNameResolver: { resolve: async (paneId) => names.get(paneId) },
+    paneNamer: { rename: async (paneId, name) => { await rename(paneId, name); names.set(paneId, name); } },
     inspector: stub.inspector,
   };
-  return { controller: new SessionSlotController(options), inspector: stub };
+  return { controller: new SessionSlotController(options), inspector: stub, rename, logger };
 }
 
 interface SessionListEntry {
@@ -73,6 +76,7 @@ interface SessionListEntry {
   readonly source: string;
   readonly lifecycle: string;
   readonly title: string;
+  readonly name?: string;
 }
 
 function lastSessions(stub: InspectorStub): readonly SessionListEntry[] {
@@ -167,6 +171,48 @@ describe("session slot property inspector", () => {
 
     expect(controller.state).toBe(before);
     expect(inspector.sent).toHaveLength(0);
+  });
+
+  it("renames the pane behind the key on set-slot-name and re-sends the list with the new name as the title", async () => {
+    const { controller, inspector, rename } = fixture();
+    const first = key("first", 0);
+    await controller.registerVisibleAction(appear(first));
+    await controller.handleStatusEvent(status(SESSION_STATUS.STARTED, 1), 1);
+    await controller.handlePropertyInspectorAppeared(first.id);
+
+    await controller.handleSendToPlugin(first.id, { type: "set-slot-name", name: "api" });
+
+    expect(rename).toHaveBeenCalledExactlyOnceWith("%1", "api");
+    expect(lastSessions(inspector)[0]).toMatchObject({ title: "api", name: "api" });
+    expect(first.setTitle).toHaveBeenLastCalledWith("api");
+  });
+
+  it("ignores set-slot-name for an empty key, a non-string name, or an unknown context", async () => {
+    const { controller, rename } = fixture();
+    const first = key("first", 0);
+    const second = key("second", 1);
+    await controller.registerVisibleAction(appear(first));
+    await controller.registerVisibleAction(appear(second));
+    await controller.handleStatusEvent(status(SESSION_STATUS.STARTED, 1), 1);
+
+    await controller.handleSendToPlugin(second.id, { type: "set-slot-name", name: "x" });
+    await controller.handleSendToPlugin(first.id, { type: "set-slot-name", name: 42 });
+    await controller.handleSendToPlugin("unknown-context", { type: "set-slot-name", name: "x" });
+
+    expect(rename).not.toHaveBeenCalled();
+  });
+
+  it("logs and keeps state when tmux refuses the rename", async () => {
+    const { controller, logger } = fixture(vi.fn<(paneId: string, name: string) => Promise<void>>().mockRejectedValue(new Error("tmux unavailable")));
+    const first = key("first", 0);
+    await controller.registerVisibleAction(appear(first));
+    await controller.handleStatusEvent(status(SESSION_STATUS.STARTED, 1), 1);
+    const before = controller.state;
+
+    await controller.handleSendToPlugin(first.id, { type: "set-slot-name", name: "api" });
+
+    expect(controller.state).toBe(before);
+    expect(logger.error).toHaveBeenCalledWith("Session slot rename unavailable.");
   });
 
   it("pushes list updates on later state changes only while the inspector is open", async () => {

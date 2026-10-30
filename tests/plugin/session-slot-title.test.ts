@@ -4,6 +4,7 @@ import { createSessionState, reduceSessionState, SESSION_REDUCER_ACTION, type Se
 import { SESSION_STATUS, type LocalAgentStatusEvent } from "../../src/core/types";
 import type { TmuxPaneEnumeratorProcess } from "../../src/persistence/session-state-reconciler";
 import {
+  createTmuxPaneNamer,
   createTmuxWindowNameResolver,
   resolveSlotTitles,
   SESSION_SLOT_TITLE_LIMITS,
@@ -35,12 +36,12 @@ function stateWith(entries: readonly (readonly [string, string, number])[]): Ses
 }
 
 describe("createTmuxWindowNameResolver", () => {
-  it("queries tmux for the pane window name and returns it trimmed", async () => {
+  it("queries tmux for the pane name, falling back to the window name, and returns it trimmed", async () => {
     const execute = vi.fn().mockResolvedValue({ stdout: "kimi\n" });
     const resolver = createTmuxWindowNameResolver({ process: { execute } });
 
     await expect(resolver.resolve("%1")).resolves.toBe("kimi");
-    expect(execute).toHaveBeenCalledExactlyOnceWith("tmux", ["display-message", "-t", "%1", "-p", "#{window_name}"]);
+    expect(execute).toHaveBeenCalledExactlyOnceWith("tmux", ["display-message", "-t", "%1", "-p", "#{?@aideck_name,#{@aideck_name},#{window_name}}"]);
   });
 
   it("strips control characters and bounds the name length", async () => {
@@ -51,6 +52,13 @@ describe("createTmuxWindowNameResolver", () => {
     const resolved = await resolver.resolve("%1");
     expect(resolved).toBe("kimibell" + "x".repeat(SESSION_SLOT_TITLE_LIMITS.MAX_NAME_LENGTH - "kimibell".length));
     expect(resolved).toHaveLength(SESSION_SLOT_TITLE_LIMITS.MAX_NAME_LENGTH);
+  });
+
+  it("splits a stored name on its line separator back into lines", async () => {
+    const execute = vi.fn().mockResolvedValue({ stdout: "WED|Photo|Library\n" });
+    const resolver = createTmuxWindowNameResolver({ process: { execute } });
+
+    await expect(resolver.resolve("%1")).resolves.toBe("WED\nPhoto\nLibrary");
   });
 
   it("returns undefined for empty or whitespace-only names", async () => {
@@ -65,6 +73,62 @@ describe("createTmuxWindowNameResolver", () => {
     const resolver = createTmuxWindowNameResolver({ process: { execute } });
 
     await expect(resolver.resolve("%1")).resolves.toBeUndefined();
+  });
+});
+
+describe("createTmuxPaneNamer", () => {
+  it("stores the name as a pane option and as the pane title", async () => {
+    const execute = vi.fn().mockResolvedValue({ stdout: "" });
+
+    await createTmuxPaneNamer({ process: { execute } }).rename("%2", "  api  ");
+
+    expect(execute).toHaveBeenNthCalledWith(1, "tmux", ["set-option", "-p", "-t", "%2", "@aideck_name", "api"]);
+    expect(execute).toHaveBeenNthCalledWith(2, "tmux", ["select-pane", "-t", "%2", "-T", "api"]);
+  });
+
+  it("doubles # in the pane title because tmux expands formats there, and keeps it literal in the option", async () => {
+    const execute = vi.fn().mockResolvedValue({ stdout: "" });
+
+    await createTmuxPaneNamer({ process: { execute } }).rename("%2", "a#{pid}");
+
+    expect(execute).toHaveBeenNthCalledWith(1, "tmux", ["set-option", "-p", "-t", "%2", "@aideck_name", "a#{pid}"]);
+    expect(execute).toHaveBeenNthCalledWith(2, "tmux", ["select-pane", "-t", "%2", "-T", "a##{pid}"]);
+  });
+
+  it("clears the pane option when the name is empty after sanitizing", async () => {
+    const execute = vi.fn().mockResolvedValue({ stdout: "" });
+
+    await createTmuxPaneNamer({ process: { execute } }).rename("%2", " \u0007 ");
+
+    expect(execute).toHaveBeenCalledExactlyOnceWith("tmux", ["set-option", "-p", "-u", "-t", "%2", "@aideck_name"]);
+  });
+
+  it("drops leading dashes so tmux never reads the name as a flag", async () => {
+    const execute = vi.fn().mockResolvedValue({ stdout: "" });
+
+    await createTmuxPaneNamer({ process: { execute } }).rename("%2", "--x ok");
+
+    expect(execute).toHaveBeenNthCalledWith(1, "tmux", ["set-option", "-p", "-t", "%2", "@aideck_name", "x ok"]);
+  });
+
+  it("keeps up to three lines, cuts each to the key width, and joins them with a space in the title", async () => {
+    const execute = vi.fn().mockResolvedValue({ stdout: "" });
+
+    await createTmuxPaneNamer({ process: { execute } }).rename("%2", "first line is long\n\n second\r\nthird\nfourth");
+
+    expect(execute).toHaveBeenNthCalledWith(1, "tmux", ["set-option", "-p", "-t", "%2", "@aideck_name", "first line|second|third"]);
+    expect(execute).toHaveBeenNthCalledWith(2, "tmux", ["select-pane", "-t", "%2", "-T", "first line second third"]);
+  });
+
+  it("bounds the name length and refuses a malformed pane id without running tmux", async () => {
+    const execute = vi.fn().mockResolvedValue({ stdout: "" });
+    const namer = createTmuxPaneNamer({ process: { execute } });
+
+    await namer.rename("%2; kill-server", "x");
+    expect(execute).not.toHaveBeenCalled();
+
+    await namer.rename("%2", "y".repeat(100));
+    expect(execute.mock.calls[0]?.[1]).toContain("y".repeat(SESSION_SLOT_TITLE_LIMITS.MAX_PANE_NAME_LINE_LENGTH));
   });
 });
 

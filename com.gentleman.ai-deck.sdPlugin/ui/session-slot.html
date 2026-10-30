@@ -8,6 +8,10 @@
   body { font-family: system-ui, sans-serif; margin: 8px; color: #e5e7eb; font-size: 12px; }
   label { display: block; margin-bottom: 4px; font-weight: 600; }
   select { width: 100%; padding: 4px; background: #1f2937; color: #e5e7eb; border: 1px solid #374151; border-radius: 4px; }
+  textarea { box-sizing: border-box; width: 100%; padding: 4px; resize: none; font: inherit; background: #1f2937; color: #e5e7eb; border: 1px solid #374151; border-radius: 4px; }
+  button { margin-top: 6px; padding: 4px 12px; background: #2563eb; color: #fff; border: 0; border-radius: 4px; cursor: pointer; }
+  button:disabled { background: #374151; color: #9ca3af; cursor: default; }
+  .field { margin-top: 12px; }
   .hint { margin-top: 6px; color: #9ca3af; }
 </style>
 </head>
@@ -15,9 +19,19 @@
 <label for="session">Assigned session</label>
 <select id="session" disabled><option>No active sessions</option></select>
 <div class="hint">Choosing a session moves it to this key; occupants swap slots.</div>
+<div class="field">
+  <label for="name">Session name</label>
+  <textarea id="name" rows="3" wrap="off" placeholder="No session on this key" disabled></textarea>
+  <button id="apply" type="button" disabled>Apply</button>
+  <div class="hint">Up to 3 lines of 10 characters; Enter adds a line. Saved to the tmux pane as @aideck_name (lines joined by |) and its title. Apply with it empty to use the window name.</div>
+</div>
 <script>
 "use strict";
 const select = document.getElementById("session");
+const nameInput = document.getElementById("name");
+const applyButton = document.getElementById("apply");
+const NAME_MAX_LINES = 3;
+const NAME_MAX_LINE_LENGTH = 10;
 let socket;
 let sessions = [];
 let actionInfo;
@@ -32,8 +46,18 @@ function currentSlotIndex() {
   }
 }
 
+function renderName(slot) {
+  const current = sessions.find((session) => session.slotIndex === slot);
+  nameInput.disabled = current === undefined;
+  applyButton.disabled = current === undefined;
+  nameInput.placeholder = current === undefined ? "No session on this key" : "Window name";
+  // Never overwrite what is being typed.
+  if (document.activeElement !== nameInput) nameInput.value = current && current.name ? current.name : "";
+}
+
 function render() {
   const slot = currentSlotIndex();
+  renderName(slot);
   select.innerHTML = "";
   if (sessions.length === 0) {
     const empty = document.createElement("option");
@@ -89,6 +113,25 @@ select.addEventListener("change", () => {
     payload: select.value === ""
       ? { type: "clear-slot" }
       : { type: "set-slot-session", sessionId: select.value },
+  }));
+});
+
+nameInput.addEventListener("input", () => {
+  // Hold the box to the key: at most 3 lines, each cut to what fits one line.
+  const limited = nameInput.value
+    .split("\n")
+    .slice(0, NAME_MAX_LINES)
+    .map((line) => line.slice(0, NAME_MAX_LINE_LENGTH))
+    .join("\n");
+  if (limited !== nameInput.value) nameInput.value = limited;
+});
+
+applyButton.addEventListener("click", () => {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  socket.send(JSON.stringify({
+    event: "sendToPlugin",
+    context: inspectorUUID,
+    payload: { type: "set-slot-name", name: nameInput.value },
   }));
 });
 </script>
