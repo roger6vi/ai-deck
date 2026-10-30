@@ -8,23 +8,23 @@ function processFor(outputs: readonly string[]) {
 }
 describe("Ghostty tmux navigator", () => {
   it("uses explicit argv to navigate one validated pane through one targetable client", async () => {
-    const process = processFor(["", "%1\t$0\t@1\n", "/dev/ttys001\t$0\n", "", "", "", ""]);
+    const process = processFor(["", "%1|$0|@1\n", "/dev/ttys001|$0\n", "", "", "", ""]);
     const outcome = await createGhosttyTmuxNavigator({ process }).navigate(target);
     expect(outcome).toBe(NAVIGATION_OUTCOME.NAVIGATED);
-    expect(process.execute.mock.calls).toEqual([["tmux", ["has-session", "-t", "$0"]], ["tmux", ["list-panes", "-a", "-F", "#{pane_id}\t#{session_id}\t#{window_id}"]], ["tmux", ["list-clients", "-F", "#{client_tty}\t#{session_id}"]], ["open", ["-b", target.ghosttyBundleId]], ["tmux", ["switch-client", "-c", "/dev/ttys001", "-t", "$0"]], ["tmux", ["select-window", "-t", "@1"]], ["tmux", ["select-pane", "-t", "%1"]]]);
+    expect(process.execute.mock.calls).toEqual([["tmux", ["has-session", "-t", "$0"]], ["tmux", ["list-panes", "-a", "-F", "#{pane_id}|#{session_id}|#{window_id}"]], ["tmux", ["list-clients", "-F", "#{client_tty}|#{session_id}"]], ["open", ["-b", target.ghosttyBundleId]], ["tmux", ["switch-client", "-c", "/dev/ttys001", "-t", "$0"]], ["tmux", ["select-window", "-t", "@1"]], ["tmux", ["select-pane", "-t", "%1"]]]);
   });
   it("returns missing without focusing when the pane is absent or its identifier was reused", async () => {
-    for (const panes of ["", "%1\t$2\t@1\n", "%1\t$0\t@2\n", "%1\t$0\t@1\textra\n"]) {
+    for (const panes of ["", "%1|$2|@1\n", "%1|$0|@2\n", "%1|$0|@1|extra\n"]) {
       const process = processFor(["", panes]);
       const outcome = await createGhosttyTmuxNavigator({ process }).navigate({ ...target, tmuxWindow: "@1" });
       expect(outcome).toBe(NAVIGATION_OUTCOME.MISSING);
       expect(process.execute).toHaveBeenCalledTimes(2);
     }
-    const invalid = processFor(["", "%1\t$0\tnot-a-window-id\n"]); expect(await createGhosttyTmuxNavigator({ process: invalid }).navigate(target)).toBe(NAVIGATION_OUTCOME.MISSING); expect(invalid.execute).toHaveBeenCalledTimes(2);
+    const invalid = processFor(["", "%1|$0|not-a-window-id\n"]); expect(await createGhosttyTmuxNavigator({ process: invalid }).navigate(target)).toBe(NAVIGATION_OUTCOME.MISSING); expect(invalid.execute).toHaveBeenCalledTimes(2);
   });
   it("returns ambiguous without focusing for zero or multiple targetable clients", async () => {
-    for (const clients of ["", "/dev/ttys001\t$0\n/dev/ttys002\t$0\n", "/dev/ttys001\u0000\t$0\n", "/dev/ttys 001\t$0\n"]) {
-      const process = processFor(["", "%1\t$0\t@1\n", clients]);
+    for (const clients of ["", "/dev/ttys001|$0\n/dev/ttys002|$0\n", "/dev/ttys001\u0000|$0\n", "/dev/ttys 001|$0\n"]) {
+      const process = processFor(["", "%1|$0|@1\n", clients]);
       const outcome = await createGhosttyTmuxNavigator({ process }).navigate(target);
       expect(outcome).toBe(NAVIGATION_OUTCOME.AMBIGUOUS);
       expect(process.execute).toHaveBeenCalledTimes(3);
@@ -32,7 +32,7 @@ describe("Ghostty tmux navigator", () => {
   });
   it("contains every command-stage failure as unavailable", async () => {
     for (let failedAt = 0; failedAt < 7; failedAt += 1) {
-      let call = 0; const outputs = ["", "%1\t$0\t@1\n", "/dev/ttys001\t$0\n", "", "", "", ""];
+      let call = 0; const outputs = ["", "%1|$0|@1\n", "/dev/ttys001|$0\n", "", "", "", ""];
       const execute = vi.fn<(command: string, args: readonly string[]) => Promise<{ readonly stdout: string }>>().mockImplementation(() => Promise.resolve(call++ === failedAt ? Promise.reject(new Error("sensitive output")) : { stdout: outputs[call - 1] ?? "" }));
       expect(await createGhosttyTmuxNavigator({ process: { execute } }).navigate(target)).toBe(NAVIGATION_OUTCOME.UNAVAILABLE);
     }
@@ -46,5 +46,12 @@ describe("Ghostty tmux navigator", () => {
     await expect(pending).rejects.toThrow("Navigation process unavailable.");
     expect(launch).toHaveBeenCalledWith("tmux", [], NAVIGATION_PROCESS_LIMITS.MAX_OUTPUT_BYTES);
     expect(kill).toHaveBeenNthCalledWith(1, "SIGTERM"); expect(kill).toHaveBeenNthCalledWith(2, "SIGKILL"); expect(timer.cancel).toHaveBeenCalled();
+  });
+  it("asks tmux for printable-delimited fields, since tmux turns control characters into underscores for a client outside tmux", async () => {
+    const process = processFor(["", "%1|$0|@1\n", "/dev/ttys001|$0\n", "", "", "", ""]);
+    await createGhosttyTmuxNavigator({ process }).navigate(target);
+    const formats = process.execute.mock.calls.filter(([, args]) => args[0] === "list-panes" || args[0] === "list-clients").map(([, args]) => args.at(-1) ?? "");
+    expect(formats).toHaveLength(2);
+    for (const format of formats) expect(format).not.toMatch(/[\x00-\x1f\x7f]/);
   });
 });
