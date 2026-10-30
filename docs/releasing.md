@@ -42,7 +42,7 @@ The script never prints signing keys or GitHub credentials, never force-pushes, 
 2. Run tests, typecheck, and the production dependency audit before changing versions or building.
 3. Synchronize package, lockfile, Stream Deck, Claude, Codex, and marketplace versions.
 4. Update `CHANGELOG.md`, build, regenerate project assets, and run profile/plugin validation.
-5. Package `dist/io.github.roger6vi.ai-deck.streamDeckPlugin`, validate its exact content allowlist, run the bounded runtime smoke gate, and copy the exact built OpenCode bundle to `dist/ai-deck-opencode.js`.
+5. Package `dist/roger6vi.ai-deck.streamDeckPlugin`, validate its exact content allowlist, run the bounded runtime smoke gate, and copy the exact built OpenCode bundle to `dist/ai-deck-opencode.js`.
 6. Stage and byte-check both assets, create the signed Conventional Commit and signed tag, push without force, and create the GitHub release with both assets.
 
 If any command fails before the commit, inspect the working tree and generated output before retrying. Do not bypass a failed gate or move a published tag as part of the normal flow.

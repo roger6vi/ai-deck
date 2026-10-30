@@ -5,9 +5,9 @@ import { fileURLToPath } from "node:url";
 import { preparePackageStage } from "./prepare-package-stage.mjs";
 import { assertPackageFile } from "./check-package.mjs";
 
-const PLUGIN_DIRECTORY = "io.github.roger6vi.ai-deck.sdPlugin";
-const STAGE_DIRECTORY = ".package-stage/io.github.roger6vi.ai-deck.sdPlugin";
-const ARCHIVE_PATH = "dist/io.github.roger6vi.ai-deck.streamDeckPlugin";
+const PLUGIN_DIRECTORY = "roger6vi.ai-deck.sdPlugin";
+const STAGE_DIRECTORY = ".package-stage/roger6vi.ai-deck.sdPlugin";
+const ARCHIVE_PATH = "dist/roger6vi.ai-deck.streamDeckPlugin";
 
 export function runStreamDeckPack(stage, command = "streamdeck") {
   return new Promise((resolve, reject) => {

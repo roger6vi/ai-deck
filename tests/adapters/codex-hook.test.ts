@@ -5,7 +5,7 @@ import { deriveAdapterSessionId } from "../../src/adapters/adapter-environment";
 import { buildCodexHookArgv, CODEX_HOOK_EXIT_CODE, runCodexHook } from "../../src/adapters/codex-hook";
 
 const environment: AdapterEnvironment = {
-  pluginRoot: "/plugins/io.github.roger6vi.ai-deck.sdPlugin",
+  pluginRoot: "/plugins/roger6vi.ai-deck.sdPlugin",
   paneId: "%3",
   tmuxSession: "$0",
   nodeBinary: "node",

@@ -7,7 +7,7 @@ const VERSION_TARGETS = [
   { path: "package.json", keys: ["version"] },
   { path: "package-lock.json", keys: ["version"] },
   { path: "package-lock.json", keys: ["packages", "", "version"] },
-  { path: "io.github.roger6vi.ai-deck.sdPlugin/manifest.json", keys: ["Version"], format: (version) => `${version}.0` },
+  { path: "roger6vi.ai-deck.sdPlugin/manifest.json", keys: ["Version"], format: (version) => `${version}.0` },
   { path: "claude-code-plugin/.claude-plugin/plugin.json", keys: ["version"] },
   { path: "codex-plugin/.codex-plugin/plugin.json", keys: ["version"] },
   { path: ".claude-plugin/marketplace.json", keys: ["plugins", 0, "version"] },

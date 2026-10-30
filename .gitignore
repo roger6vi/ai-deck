@@ -8,11 +8,11 @@ dist/*
 .package-stage/
 logs/
 *.tsbuildinfo
-io.github.roger6vi.ai-deck.sdPlugin/bin/
-io.github.roger6vi.ai-deck.sdPlugin/bin.previous/
-io.github.roger6vi.ai-deck.sdPlugin/bin.next/
+roger6vi.ai-deck.sdPlugin/bin/
+roger6vi.ai-deck.sdPlugin/bin.previous/
+roger6vi.ai-deck.sdPlugin/bin.next/
 *.streamDeckPlugin
-!dist/io.github.roger6vi.ai-deck.streamDeckPlugin
+!dist/roger6vi.ai-deck.streamDeckPlugin
 !dist/ai-deck-opencode.js
 runtime/
 endpoint.json

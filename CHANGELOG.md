@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- Uses the owner's canonical Stream Deck identity `roger6vi.ai-deck` (action `roger6vi.ai-deck.session-slot`) and the `roger6vi.ai-deck.sdPlugin` directory. This replaces the published `io.github.roger6vi.ai-deck` identity and the pre-release `com.gentleman.ai-deck` identity; the visible product name remains AI Deck.
+
+### Installation
+
+The plugin now uses `roger6vi.ai-deck`. Export and back up existing profiles before replacing an older plugin; old action references require migration. Runtime slot state is not migrated automatically.
+
 ## v0.1.0
 
 ### Summary

@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 
-const INSTALLED_PLUGIN_ROOT = join(homedir(), "Library", "Application Support", "com.elgato.StreamDeck", "Plugins", "io.github.roger6vi.ai-deck.sdPlugin");
+const INSTALLED_PLUGIN_ROOT = join(homedir(), "Library", "Application Support", "com.elgato.StreamDeck", "Plugins", "roger6vi.ai-deck.sdPlugin");
 function deriveAdapterSessionId(nativeSessionId) {
     const hex = createHash("sha256").update(nativeSessionId, "utf8").digest("hex");
     const variant = ["8", "9", "a", "b"][parseInt(hex[16] ?? "0", 16) % 4] ?? "8";

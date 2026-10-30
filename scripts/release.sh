@@ -125,14 +125,14 @@ npm run generate
 npm run check:generated
 npm run validate:profile
 npm run validate:plugin
-rm -rf io.github.roger6vi.ai-deck.sdPlugin/bin.previous io.github.roger6vi.ai-deck.sdPlugin/bin.next .package-stage
+rm -rf roger6vi.ai-deck.sdPlugin/bin.previous roger6vi.ai-deck.sdPlugin/bin.next .package-stage
 node scripts/pack-plugin.mjs
 npm run check:package
 npm run smoke:runtime
 
-STREAM_DECK_ASSET="dist/io.github.roger6vi.ai-deck.streamDeckPlugin"
+STREAM_DECK_ASSET="dist/roger6vi.ai-deck.streamDeckPlugin"
 OPENCODE_ASSET="dist/ai-deck-opencode.js"
-BUILT_OPENCODE_ADAPTER="io.github.roger6vi.ai-deck.sdPlugin/bin/opencode-plugin.js"
+BUILT_OPENCODE_ADAPTER="roger6vi.ai-deck.sdPlugin/bin/opencode-plugin.js"
 [[ -s "$STREAM_DECK_ASSET" ]] || fail "Stream Deck installer was not produced."
 [[ -s "$BUILT_OPENCODE_ADAPTER" ]] || fail "built OpenCode adapter was not produced."
 cp "$BUILT_OPENCODE_ADAPTER" "$OPENCODE_ASSET"
@@ -140,7 +140,7 @@ cmp --silent "$BUILT_OPENCODE_ADAPTER" "$OPENCODE_ASSET" || fail "standalone Ope
 
 # The tree was clean at preflight, so tracked build changes are release-generated.
 git add -u
-git add -- package.json package-lock.json io.github.roger6vi.ai-deck.sdPlugin/manifest.json \
+git add -- package.json package-lock.json roger6vi.ai-deck.sdPlugin/manifest.json \
   claude-code-plugin/.claude-plugin/plugin.json codex-plugin/.codex-plugin/plugin.json \
   .claude-plugin/marketplace.json CHANGELOG.md
 git add -f -- "$STREAM_DECK_ASSET" "$OPENCODE_ASSET"

@@ -11,11 +11,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { validateProfileArchive } from "../scripts/profile-envelope.mjs";
 import { validateProfileFile } from "../scripts/validate-profile.mjs";
 
-const CANONICAL_PROFILE_SIZE = 1102;
-const CANONICAL_PROFILE_SHA256 = "42227f7286a1855096d9f7eed3e6608652183fa40bf16ada6a5c3c788cebe9ec";
+const CANONICAL_PROFILE_SIZE = 1093;
+const CANONICAL_PROFILE_SHA256 = "845e28eacd25979aa90fc19f2b072f0167499a83d1e4c2d64902a92da2b547f3";
 const MAX_PROFILE_SIZE = 64 * 1024;
 const { O_NONBLOCK, O_RDONLY } = fsConstants;
-const PROFILE_PATH = new URL("../io.github.roger6vi.ai-deck.sdPlugin/Profiles/Local%20Agent%20Status.streamDeckProfile", import.meta.url);
+const PROFILE_PATH = new URL("../roger6vi.ai-deck.sdPlugin/Profiles/Local%20Agent%20Status.streamDeckProfile", import.meta.url);
 const ENVELOPE_PATH = new URL("../scripts/profile-envelope.mjs", import.meta.url);
 const CLI_PATH = fileURLToPath(new URL("../scripts/validate-profile.mjs", import.meta.url));
 const executeFile = promisify(execFile);

@@ -25,30 +25,25 @@ Source builds and development also require Node.js **24.x** and the
 
 ## Install
 
-### One-time migration from pre-release builds
+### Upgrade from a previous identity
 
-Before installing v0.1.0, remove any pre-release plugin using the legacy
-`com.gentleman.ai-deck` identity. Keeping both identities installed would show
-duplicate AI Deck plugins in Stream Deck.
+AI Deck uses the single Stream Deck identity `roger6vi.ai-deck`. Earlier builds
+used `com.gentleman.ai-deck` (pre-release) and `io.github.roger6vi.ai-deck`
+(`v0.1.0`). The visible product name remains **AI Deck**.
 
-Uninstall AI Deck in the Stream Deck app. If the legacy copy was linked for
-development, unlink and delete it first:
-
-```bash
-npm exec -- streamdeck unlink --delete com.gentleman.ai-deck
-```
-
-The new public identity is `io.github.roger6vi.ai-deck`. Pre-release local slot
-state belongs to the legacy identity, is not migrated automatically, and will
-be recreated as new agent events arrive.
+Export and back up your existing profiles before replacing an older plugin.
+Existing keys retain the old action UUID and must be migrated before they can
+work with the new identity. Do not delete your original profiles or exports.
+Runtime slot state is not migrated automatically; new agent events recreate it.
 
 ### Published release
 
 For a published release, open the matching version on the
 [GitHub Releases page](https://github.com/roger6vi/ai-deck/releases), download
-`io.github.roger6vi.ai-deck.streamDeckPlugin`, open it, and approve installation in
-the Stream Deck app. `v0.1.0` is available there with its signed tag and exact
-downloadable assets.
+`roger6vi.ai-deck.streamDeckPlugin`, open it, and approve installation in
+the Stream Deck app. The published `v0.1.0` release predates this identity and
+still ships `io.github.roger6vi.ai-deck.streamDeckPlugin`; export, migrate, and
+back up your profiles before replacing it.
 
 If this Mac uses OpenCode, also download `ai-deck-opencode.js` from the same
 release and install it without a source checkout:
@@ -74,7 +69,7 @@ npm run pack
 npm run install:opencode
 ```
 
-`npm run pack` creates `dist/io.github.roger6vi.ai-deck.streamDeckPlugin`; it does
+`npm run pack` creates `dist/roger6vi.ai-deck.streamDeckPlugin`; it does
 not install the plugin. Open that file and approve it in the Stream Deck app.
 `install:opencode` is only needed on a Mac that runs OpenCode.
 
@@ -84,14 +79,14 @@ the packaged artifact:
 ```bash
 npm install
 npm run build
-npm exec -- streamdeck link io.github.roger6vi.ai-deck.sdPlugin
+npm exec -- streamdeck link roger6vi.ai-deck.sdPlugin
 npm run restart:plugin
 npm run install:opencode # only when this Mac runs OpenCode
 ```
 
 `restart:plugin` starts or restarts an existing installation or development
 link; it is not a first-install command. Once running, the plugin registers
-`io.github.roger6vi.ai-deck` with the Stream Deck host, publishes an authenticated
+`roger6vi.ai-deck` with the Stream Deck host, publishes an authenticated
 `runtime/endpoint.json` under the installed plugin root, and starts the local
 loopback server.
 
@@ -99,7 +94,7 @@ To import the bundled profile:
 
 1. Open the Stream Deck app.
 2. Right-click a profile → **Import Profile…**
-3. Select `io.github.roger6vi.ai-deck.sdPlugin/Profiles/Local Agent Status.streamDeckProfile`.
+3. Select `roger6vi.ai-deck.sdPlugin/Profiles/Local Agent Status.streamDeckProfile`.
 
 ## Uninstall / rollback
 
@@ -107,12 +102,12 @@ To import the bundled profile:
 npm run uninstall:plugin
 ```
 
-This unlinks and deletes `io.github.roger6vi.ai-deck` from the Stream Deck
+This unlinks and deletes `roger6vi.ai-deck` from the Stream Deck
 app. To fully clean up:
 
 ```bash
-rm -rf io.github.roger6vi.ai-deck.sdPlugin/bin \
-       io.github.roger6vi.ai-deck.sdPlugin/runtime \
+rm -rf roger6vi.ai-deck.sdPlugin/bin \
+       roger6vi.ai-deck.sdPlugin/runtime \
        dist
 ```
 
@@ -123,7 +118,7 @@ rm -rf io.github.roger6vi.ai-deck.sdPlugin/bin \
 - `dist/` holds the packaged `.streamDeckPlugin` archive.
 
 To roll back to a previously packaged plugin, restore the
-`io.github.roger6vi.ai-deck.sdPlugin` directory from your backup and run
+`roger6vi.ai-deck.sdPlugin` directory from your backup and run
 `npm run restart:plugin`.
 
 ## Troubleshooting
@@ -218,7 +213,7 @@ shell hook), use the `runAdapterEmit` helper in `src/cli/adapter-emit.ts`.
 During development you can invoke it directly:
 
 ```bash
-AI_DECK_PLUGIN_ROOT=/absolute/path/to/io.github.roger6vi.ai-deck.sdPlugin \
+AI_DECK_PLUGIN_ROOT=/absolute/path/to/roger6vi.ai-deck.sdPlugin \
   npx tsx src/cli/adapter-emit.ts \
     --source codex \
     --session-id "$SESSION_UUID" \
@@ -239,8 +234,8 @@ The CLI is also bundled as `bin/adapter-emit.js`, a self-contained
 script any Node runtime can execute directly:
 
 ```bash
-AI_DECK_PLUGIN_ROOT=/absolute/path/to/io.github.roger6vi.ai-deck.sdPlugin \
-  node io.github.roger6vi.ai-deck.sdPlugin/bin/adapter-emit.js \
+AI_DECK_PLUGIN_ROOT=/absolute/path/to/roger6vi.ai-deck.sdPlugin \
+  node roger6vi.ai-deck.sdPlugin/bin/adapter-emit.js \
     --source opencode --session-id "$SESSION_UUID" \
     --lifecycle started --pane-id "%1" --session '$0'
 ```

@@ -49,18 +49,18 @@ interface ProfileRoot {
 }
 
 const PROJECT_ROOT = fileURLToPath(new URL("..", import.meta.url));
-const MANIFEST_PATH = resolve(PROJECT_ROOT, "io.github.roger6vi.ai-deck.sdPlugin/manifest.json");
+const MANIFEST_PATH = resolve(PROJECT_ROOT, "roger6vi.ai-deck.sdPlugin/manifest.json");
 const TEMPORARY_PROFILE_NAME = "Local Agent Status.streamDeckProfile";
 const EXPECTED_ARCHIVE_PATHS = [
   "8E61C791-8708-42EA-9891-1554B6F0B5B8.sdProfile/manifest.json",
   "8E61C791-8708-42EA-9891-1554B6F0B5B8.sdProfile/Profiles/TCT463B30T74L6S1LPIEFS6ST4Z/manifest.json",
 ] as const;
 const EXPECTED_ACTION_IDS = [
-  "d5cad140-85d7-5950-8a0f-006f806eec78",
-  "c0689340-dd29-557b-8fb9-69960a2cfc64",
-  "df72a5ec-2aaf-53e4-80db-34ce73db19ac",
-  "3ec08e95-6d5b-5a5c-8a61-986f83fc502e",
-  "11b3c78d-07ef-5f83-842a-31e64548985f",
+  "d3c5946e-0941-5c61-8efd-dc93b1d18f87",
+  "99d42226-76b6-5876-8499-fdfd1d38830f",
+  "7a0bd4e0-2f58-5955-889e-b55459c69600",
+  "36eff2b8-adef-50d5-858b-be4d0273fc76",
+  "816eda5f-5250-5657-8ae7-ea6f800fddd4",
 ] as const;
 const EXPECTED_COORDINATES = ["0,0", "1,0", "2,0", "3,0", "4,0"] as const;
 const temporaryDirectories: string[] = [];
@@ -171,7 +171,7 @@ describe("deterministic Local Agent Status profile generation", () => {
     const { manifests } = await readTrustedGeneratedArchive(await readFile(PROFILE_FILE));
     const root = manifests[0] as ProfileRoot;
     expect(manifest.Profiles[0]?.Name).toBe(`Profiles/${root.Name}`);
-    expect(PROFILE_FILE).toBe(`io.github.roger6vi.ai-deck.sdPlugin/Profiles/${root.Name}.streamDeckProfile`);
+    expect(PROFILE_FILE).toBe(`roger6vi.ai-deck.sdPlugin/Profiles/${root.Name}.streamDeckProfile`);
   });
 
   it("writes one Keypad page with exactly five reserved row-zero actions", async () => {
