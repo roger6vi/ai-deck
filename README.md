@@ -27,14 +27,48 @@ Source builds and development also require Node.js **24.x** and the
 
 ### Upgrade from a previous identity
 
-AI Deck uses the single Stream Deck identity `roger6vi.ai-deck`. Earlier builds
-used `com.gentleman.ai-deck` (pre-release) and `io.github.roger6vi.ai-deck`
-(`v0.1.0`). The visible product name remains **AI Deck**.
+AI Deck uses the single Stream Deck identity `roger6vi.ai-deck`. Two earlier
+builds shipped under different identities: `com.gentleman.ai-deck`
+(pre-release) and `io.github.roger6vi.ai-deck` (`v0.1.0`). Keep only one AI Deck
+plugin installed, and migrate any profile you want to keep before installing.
 
-Export and back up your existing profiles before replacing an older plugin.
-Existing keys retain the old action UUID and must be migrated before they can
-work with the new identity. Do not delete your original profiles or exports.
-Runtime slot state is not migrated automatically; new agent events recreate it.
+1. In Stream Deck, export the profiles you want to keep (for example
+   `Local Agent Status.streamDeckProfile`).
+2. Back up those exported archives; migration never edits the input file.
+3. Migrate each export to the current identity:
+
+   ```bash
+   npm run migrate:profile -- \
+     --input "$HOME/Desktop/Local Agent Status.streamDeckProfile" \
+     --output "$HOME/Desktop/Local Agent Status.migrated.streamDeckProfile"
+   ```
+
+4. Uninstall the old plugin identity shown in Stream Deck, for example:
+
+   ```bash
+   npm exec -- streamdeck unlink --delete io.github.roger6vi.ai-deck
+   npm exec -- streamdeck unlink --delete com.gentleman.ai-deck
+   ```
+
+5. Install the new `roger6vi.ai-deck.streamDeckPlugin` archive and import the
+   migrated profiles in the Stream Deck app.
+
+What the migration does and does not do:
+
+- It reads one explicit `--input` export and writes one new `--output` archive.
+  It refuses the same path, an existing output, and any non-`.streamDeckProfile`
+  argument, and it validates the whole input before writing.
+- It rewrites only action UUID fields inside the profile's action containers
+  (`Controllers[].Actions` and recognized multi-action routine lists). Action
+  instance IDs, unrelated settings, titles, and assets are preserved; settings
+  values that merely look like an identity are never rewritten.
+- Only the root and per-page profile `manifest.json` files are parsed, and every
+  other entry keeps its exact bytes (including an `assets/manifest.json`).
+  Numeric tokens such as large integers, `-0`, and exponent spelling survive
+  unchanged; they are never rounded through JavaScript numbers.
+- It never imports a profile, never installs or uninstalls the plugin, and never
+  touches Stream Deck's application-support directory.
+- Runtime slot state belongs to the old plugin identity and is **not migrated automatically**; it is recreated as new agent events arrive.
 
 ### Published release
 
@@ -343,6 +377,7 @@ Rejected events never touch persisted state.
 |---|---|
 | `npm run build` | Bundle `src/plugin.ts` to `bin/plugin.js`. |
 | `npm run pack` | Build, regenerate assets/profile, validate, and package. |
+| `npm run migrate:profile -- --input <in> --output <out>` | Migrate an exported profile from a previous plugin identity. |
 | `npm run restart:plugin` | Restart the plugin in the Stream Deck app. |
 | `npm run uninstall:plugin` | Unlink and delete the plugin from the Stream Deck app. |
 | `npm run verify` | Full CI gate (tests + typecheck + audit + pack + smoke). |

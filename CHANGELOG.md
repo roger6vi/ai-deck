@@ -5,10 +5,11 @@
 ### Changes
 
 - Uses the owner's canonical Stream Deck identity `roger6vi.ai-deck` (action `roger6vi.ai-deck.session-slot`) and the `roger6vi.ai-deck.sdPlugin` directory. This replaces the published `io.github.roger6vi.ai-deck` identity and the pre-release `com.gentleman.ai-deck` identity; the visible product name remains AI Deck.
+- Adds `npm run migrate:profile` to migrate explicitly supplied exported `.streamDeckProfile` archives from either previous identity. It never edits the source export, installs or imports a profile, or touches Stream Deck application-support data.
 
 ### Installation
 
-The plugin now uses `roger6vi.ai-deck`. Export and back up existing profiles before replacing an older plugin; old action references require migration. Runtime slot state is not migrated automatically.
+Install only the new identity. Export and back up the profiles you want to keep, migrate each one with `npm run migrate:profile`, uninstall the previous plugin identity, install the new archive, and import the migrated profiles. Runtime slot state is not migrated automatically.
 
 ## v0.1.0
 

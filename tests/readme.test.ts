@@ -31,6 +31,13 @@ describe("README setup and rollback documentation", () => {
     expect(readme).toMatch(/not migrated automatically/i);
   });
 
+  it("documents the exported-profile migration command and its backup step", async () => {
+    const readme = await readReadme();
+    expect(readme).toContain("npm run migrate:profile -- --input");
+    expect(readme).toContain(".streamDeckProfile");
+    expect(readme).toMatch(/back ?up/i);
+  });
+
   it("documents the uninstall command and the runtime/dist cleanup paths", async () => {
     const readme = await readReadme();
     expect(readme).toContain("npm run uninstall:plugin");

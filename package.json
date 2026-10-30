@@ -18,6 +18,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "validate:plugin": "streamdeck validate roger6vi.ai-deck.sdPlugin --no-update-check",
+    "migrate:profile": "node scripts/migrate-profile.mjs",
     "check:package": "node scripts/check-package.mjs",
     "smoke:runtime": "node scripts/runtime-smoke.mjs",
     "restart:plugin": "streamdeck restart roger6vi.ai-deck",
