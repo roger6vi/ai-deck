@@ -10,7 +10,7 @@ Build a local-only Stream Deck view that shows five terminal agent session state
 - Five keys on the original 15-key Stream Deck, assigned first-free and stable while each session exists.
 - Colors: gray free/unassigned/disabled; green assigned idle/read or physically acknowledged; amber assigned running under five minutes; red assigned error or running over five minutes; blue assigned completed with unread response.
 - Optional local adapters: Codex and OpenCode on the personal Mac; Claude Code on the work Mac.
-- Pressing an assigned key activates Ghostty, selects the captured tmux pane, and acknowledges blue; missing panes release keys immediately.
+- Pressing an assigned key activates Ghostty, selects the captured tmux pane, and acknowledges blue only after successful navigation; navigation probe failures leave keys unchanged.
 - Plugin packaging/export and hardware acceptance using the existing two OpenCode sessions.
 - Delivery setup: create the new GitHub repository after proposal/design acceptance and before implementation.
 
@@ -50,7 +50,7 @@ Use an official Stream Deck Node plugin hosting token-authenticated `POST /event
 | Risk | Likelihood | Mitigation |
 |---|---|---|
 | Local IPC spoofing | Med | Bearer token, localhost only, restricted endpoint file, no sensitive payloads. |
-| Stale panes/restarts | Med | Verify tmux pane before navigation; age out and release keys. |
+| Stale panes/restarts | Med | Release keys only from explicit pane-disappeared lifecycle events or startup reconciliation. |
 | Hook slowdown | Med | Low-frequency events, sub-200ms timeout, fail-open adapters. |
 | Multi-window Ghostty ambiguity | High | Best effort only; alert/log when ambiguous. |
 
@@ -66,6 +66,6 @@ Disable/remove adapters, stop the plugin, and delete the endpoint file/package. 
 
 - [ ] Two existing OpenCode sessions occupy stable keys and show expected green/amber/blue/red transitions.
 - [ ] Only physical assigned key press acknowledges unread blue and navigates to Ghostty/tmux.
-- [ ] Missing pane releases key immediately.
+- [ ] Navigation probe failures leave keys unchanged; explicit pane disappearance and startup reconciliation release missing panes.
 - [ ] Plugin exports/imports locally without cloud or cross-machine sync.
 - [ ] Event payloads never include prompts, transcripts, tool outputs, or secrets.

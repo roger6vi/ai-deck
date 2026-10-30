@@ -260,29 +260,19 @@ export class SessionSlotController {
       this.#logNavigationFailure();
       return;
     }
-    if (outcome === NAVIGATION_OUTCOME.UNAVAILABLE) {
-      this.#logNavigationFailure();
+    if (outcome !== NAVIGATION_OUTCOME.NAVIGATED) {
+      if (outcome === NAVIGATION_OUTCOME.UNAVAILABLE) this.#logNavigationFailure();
       return;
     }
     if (!this.#matchesCurrentAssignment(visible.slotIndex, sessionId, target, assignmentId)) return;
     const prevState = this.#state;
-    if (outcome === NAVIGATION_OUTCOME.MISSING) {
-      this.#state = reduceSessionState(this.#state, {
-        kind: SESSION_REDUCER_ACTION.PANE_MISSING,
-        slotIndex: visible.slotIndex,
-        sessionId,
-        target,
-        assignmentId,
-      });
-    } else {
-      this.#state = reduceSessionState(this.#state, {
-        kind: SESSION_REDUCER_ACTION.PHYSICAL_KEY_DOWN,
-        slotIndex: visible.slotIndex,
-        sessionId,
-        target,
-        assignmentId,
-      });
-    }
+    this.#state = reduceSessionState(this.#state, {
+      kind: SESSION_REDUCER_ACTION.PHYSICAL_KEY_DOWN,
+      slotIndex: visible.slotIndex,
+      sessionId,
+      target,
+      assignmentId,
+    });
     await this.refresh(now);
     this.#notifyStateChanged(prevState);
   }
