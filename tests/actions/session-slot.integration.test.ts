@@ -226,8 +226,8 @@ describe("session slot Stream Deck integration", () => {
 
     const expectedPaints = [
       [SESSION_SLOT_COLOR.GRAY, DISABLED_GRAY_PAINT],
-      [SESSION_SLOT_COLOR.GREEN, "#008000"],
-      [SESSION_SLOT_COLOR.AMBER, "#FFBF00"],
+      [SESSION_SLOT_COLOR.GREEN, "#006400"],
+      [SESSION_SLOT_COLOR.AMBER, "#B45309"],
       [SESSION_SLOT_COLOR.RED, "#FF0000"],
       [SESSION_SLOT_COLOR.BLUE, "#0000FF"],
     ] as const;
@@ -253,7 +253,7 @@ describe("session slot Stream Deck integration", () => {
     expect(decodeSdkSvgImage(imageFor(action))).toContain(`fill="${DISABLED_GRAY_PAINT}"`);
 
     await controller.handleStatusEvent(status(), 1);
-    expect(decodeSdkSvgImage(imageFor(action))).toContain('fill="#FFBF00"');
+    expect(decodeSdkSvgImage(imageFor(action))).toContain('fill="#B45309"');
   });
 
   it("releases only a still-matching missing target and retains ambiguous completed assignments as acknowledged", async () => {
