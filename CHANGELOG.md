@@ -4,6 +4,7 @@
 
 ### Changes
 
+- Pins the SDK utilities' Zod dependency to 4.6.6 for GHSA-mrhx-c7xc-m3w5 while keeping Stream Deck SDK 2.1.0; public RPC validation and SDK compatibility are regression-tested.
 - Uses the owner's canonical Stream Deck identity `roger6vi.ai-deck` (action `roger6vi.ai-deck.session-slot`) and the `roger6vi.ai-deck.sdPlugin` directory. This replaces the published `io.github.roger6vi.ai-deck` identity and the pre-release `com.gentleman.ai-deck` identity; the visible product name remains AI Deck.
 - Adds `npm run migrate:profile` to migrate explicitly supplied exported `.streamDeckProfile` archives from either previous identity. It never edits the source export, installs or imports a profile, or touches Stream Deck application-support data.
 

@@ -23,6 +23,11 @@ the physical device.
 Source builds and development also require Node.js **24.x** and the
 `streamdeck` CLI provided by the repository's pinned dependencies.
 
+The SDK stays pinned to 2.1.0. Its utilities already use `zod/v4-mini`; a scoped
+npm override pins Zod 4.6.6 to address [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5)
+without downgrading the SDK. `npm ci` reproduces the patched lockfile; SDK loading
+and valid/invalid RPC validation are covered by a compatibility regression test.
+
 ## Install
 
 ### Upgrade from a previous identity

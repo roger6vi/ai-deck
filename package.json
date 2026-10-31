@@ -32,6 +32,11 @@
   "dependencies": {
     "@elgato/streamdeck": "2.1.0"
   },
+  "overrides": {
+    "@elgato/utils": {
+      "zod": "4.6.6"
+    }
+  },
   "devDependencies": {
     "@elgato/cli": "1.7.4",
     "@rollup/plugin-commonjs": "29.0.3",
