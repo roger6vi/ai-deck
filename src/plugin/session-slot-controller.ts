@@ -19,8 +19,10 @@ import {
   type NavigationOutcome,
 } from "../navigation/ghostty-tmux";
 import {
+  createTmuxPaneNamer,
   createTmuxWindowNameResolver,
   resolveSlotTitles,
+  type SessionPaneNamer,
   type SessionWindowNameResolver,
 } from "./session-slot-title";
 
@@ -56,6 +58,8 @@ export const SESSION_LIST_PAYLOAD_TYPE = "sessions";
 export const SET_SLOT_SESSION_EVENT = "set-slot-session";
 export const REQUEST_SESSIONS_EVENT = "request-sessions";
 export const CLEAR_SLOT_EVENT = "clear-slot";
+export const SET_SLOT_NAME_EVENT = "set-slot-name";
+export const SESSION_SLOT_NAME_ERROR = "Session slot rename unavailable.";
 
 export interface SessionSlotListEntry {
   readonly sessionId: string;
@@ -64,6 +68,8 @@ export interface SessionSlotListEntry {
   readonly source: string;
   readonly lifecycle: string;
   readonly title: string;
+  /** The pane's own name, without the duplicate-disambiguation suffix. */
+  readonly name?: string;
 }
 
 function isInspectorPayloadOfType(payload: unknown, type: string): boolean {
@@ -76,6 +82,12 @@ function parseSetSlotSessionPayload(payload: unknown): string | undefined {
   const record = payload as Record<string, unknown>;
   if (record.type !== SET_SLOT_SESSION_EVENT || typeof record.sessionId !== "string") return undefined;
   return UUID_V4_PATTERN.test(record.sessionId) ? record.sessionId : undefined;
+}
+
+function parseSetSlotNamePayload(payload: unknown): string | undefined {
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return undefined;
+  const record = payload as Record<string, unknown>;
+  return record.type === SET_SLOT_NAME_EVENT && typeof record.name === "string" ? record.name : undefined;
 }
 
 export type SessionStateSubscriber = (state: SessionState) => void | Promise<void>;
@@ -104,6 +116,7 @@ export interface SessionSlotControllerOptions {
   readonly logger: SessionSlotLogger;
   readonly navigator?: AssignedTargetNavigator;
   readonly windowNameResolver?: SessionWindowNameResolver;
+  readonly paneNamer?: SessionPaneNamer;
   readonly inspector?: SessionSlotInspector;
   readonly paneDiscovery?: TmuxPaneDiscovery;
 }
@@ -121,6 +134,7 @@ const productionControllerOptions: SessionSlotControllerOptions = {
   navigator: ghosttyTmuxNavigator,
   paneDiscovery: createTmuxPaneDiscovery(),
   windowNameResolver: createTmuxWindowNameResolver(),
+  paneNamer: createTmuxPaneNamer(),
   inspector: {
     sendToPropertyInspector: (payload) => streamDeck.ui.sendToPropertyInspector(payload as Parameters<typeof streamDeck.ui.sendToPropertyInspector>[0]),
   },
@@ -290,6 +304,10 @@ export class SessionSlotController {
     }
     const visible = this.#visibleActions.get(actionId);
     if (visible === undefined) return;
+    if (isInspectorPayloadOfType(payload, SET_SLOT_NAME_EVENT)) {
+      await this.#renameSlotPane(visible.slotIndex, payload);
+      return;
+    }
     const action = isInspectorPayloadOfType(payload, CLEAR_SLOT_EVENT)
       ? { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: visible.slotIndex, byUser: true } as const
       : this.#moveActionFor(payload, visible.slotIndex);
@@ -299,6 +317,22 @@ export class SessionSlotController {
     if (this.#state === prevState) return;
     await this.refresh(this.options.clock.now());
     this.#notifyStateChanged(prevState);
+    await this.#pushSessionList();
+  }
+
+  async #renameSlotPane(slotIndex: number, payload: unknown): Promise<void> {
+    const name = parseSetSlotNamePayload(payload);
+    const slot = this.#state.slots[slotIndex];
+    const namer = this.options.paneNamer;
+    if (name === undefined || namer === undefined || slot?.sessionId === undefined || slot.target === undefined) return;
+    try {
+      await namer.rename(slot.target.tmuxPaneId, name);
+    } catch {
+      this.options.logger.error(SESSION_SLOT_NAME_ERROR);
+      return;
+    }
+    await this.#resolveWindowNames(this.#state);
+    await this.refresh(this.options.clock.now());
     await this.#pushSessionList();
   }
 
@@ -452,7 +486,8 @@ export class SessionSlotController {
       sessions: [
         ...this.#state.slots.flatMap((slot, index) => {
           if (slot.sessionId === undefined || slot.lifecycle === undefined || slot.source === undefined) return [];
-          return [{ sessionId: slot.sessionId, slotIndex: index, source: slot.source, lifecycle: slot.lifecycle, title: titles[index] ?? slot.source }];
+          const name = slot.target === undefined ? undefined : this.#windowNames.get(slot.target.tmuxPaneId);
+          return [{ sessionId: slot.sessionId, slotIndex: index, source: slot.source, lifecycle: slot.lifecycle, title: titles[index] ?? slot.source, ...(name === undefined ? {} : { name }) }];
         }),
         // A session with no key still belongs in the list; that is the only way
         // the user can put it back on one.

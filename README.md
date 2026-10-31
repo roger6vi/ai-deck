@@ -193,6 +193,12 @@ is exactly one terminal; multiple terminals fail safely without guessing.
 Existing profile keys must use `roger6vi.ai-deck.session-slot` and the matching
 `Plugin.UUID`; use the profile migration above for older profiles.
 
+**Name a pane.** Select its key, enter a **Session name**, and click **Apply**.
+Names allow up to three lines of ten characters. Applying an empty name clears
+the pane override and restores the window-name fallback. The name is stored
+in the pane-scoped tmux option `@aideck_name`; ordinary window names keep literal
+`|` characters. Session choices, unassigned sessions, and **None** remain available.
+
 **Session slots show stale state after restart.** The plugin persists
 its reducer state to `runtime/state.json` and reconciles against live
 tmux panes at startup. If reconciliation cannot reach `tmux` (for

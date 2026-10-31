@@ -19,15 +19,30 @@
   .row[aria-selected="true"] .where { color: #dbeafe; }
   .empty { padding: 6px 8px; color: #9ca3af; }
   .hint { margin-top: 6px; color: #9ca3af; }
+  .field { margin-top: 12px; }
+  label { display: block; margin-bottom: 4px; font-weight: 600; }
+  textarea { box-sizing: border-box; width: 100%; padding: 4px; resize: none; font: inherit; background: #1f2937; color: #e5e7eb; border: 1px solid #374151; border-radius: 4px; }
+  #apply { margin-top: 6px; padding: 4px 12px; font: inherit; cursor: pointer; }
+  #apply:disabled { cursor: default; }
 </style>
 </head>
 <body>
 <h1 id="sessions-label">Assigned session</h1>
 <div id="sessions" role="listbox" aria-labelledby="sessions-label"></div>
 <div class="hint">Choosing a session moves it to this key; the occupant takes its place. "None" frees the key and keeps the session selectable.</div>
+<div class="field">
+  <label for="name">Session name</label>
+  <textarea id="name" rows="3" wrap="off" placeholder="No session on this key" disabled></textarea>
+  <button id="apply" type="button" disabled>Apply</button>
+  <div class="hint">Up to 3 lines of 10 characters; Enter adds a line. Apply an empty name to use the tmux window name.</div>
+</div>
 <script>
 "use strict";
 const list = document.getElementById("sessions");
+const nameInput = document.getElementById("name");
+const applyButton = document.getElementById("apply");
+const NAME_MAX_LINES = 3;
+const NAME_MAX_LINE_LENGTH = 10;
 let socket;
 let sessions = [];
 let actionInfo;
@@ -68,8 +83,17 @@ function addRow(label, where, selected, onPick) {
   list.append(row);
 }
 
+function renderName(slot) {
+  const current = slot === undefined ? undefined : sessions.find((session) => session.slotIndex === slot);
+  nameInput.disabled = current === undefined;
+  applyButton.disabled = current === undefined;
+  nameInput.placeholder = current === undefined ? "No session on this key" : "Window name";
+  if (document.activeElement !== nameInput) nameInput.value = current && current.name ? current.name : "";
+}
+
 function render() {
   const slot = currentSlotIndex();
+  renderName(slot);
   list.innerHTML = "";
   if (sessions.length === 0) {
     const empty = document.createElement("div");
@@ -108,6 +132,11 @@ window.connectElgatoStreamDeckSocket = function (port, propertyInspectorUUID, re
     }
   };
 };
+nameInput.addEventListener("input", () => {
+  const limited = nameInput.value.split("\n").slice(0, NAME_MAX_LINES).map((line) => line.slice(0, NAME_MAX_LINE_LENGTH)).join("\n");
+  if (limited !== nameInput.value) nameInput.value = limited;
+});
+applyButton.addEventListener("click", () => send({ type: "set-slot-name", name: nameInput.value }));
 </script>
 </body>
 </html>

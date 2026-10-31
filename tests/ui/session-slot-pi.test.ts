@@ -37,6 +37,16 @@ describe("session slot property inspector page", () => {
     expect(html).toContain("session.slotIndex === undefined");
   });
 
+  it("offers bounded custom names while retaining the visible session list", async () => {
+    const html = await readFile(PI_PATH, "utf8");
+    expect(html).toContain('<label for="name">Session name</label>');
+    expect(html).toContain('<textarea id="name"');
+    expect(html).toContain('id="apply"');
+    expect(html).toContain('"set-slot-name"');
+    expect(html).toContain("NAME_MAX_LINES = 3");
+    expect(html).toContain("NAME_MAX_LINE_LENGTH = 10");
+  });
+
   it("renders sessions payloads and sends set-slot-session selections", async () => {
     const html = await readFile(PI_PATH, "utf8");
     expect(html).toContain('"sendToPropertyInspector"');
