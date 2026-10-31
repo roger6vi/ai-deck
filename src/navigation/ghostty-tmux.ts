@@ -55,7 +55,8 @@ export function createBoundedNavigationProcess(options: { readonly launcher: Nav
 }
 const productionNavigationProcess = createBoundedNavigationProcess();
 function isSafeTarget(target: LocalAgentTargetMetadata): boolean { return TMUX_PANE_PATTERN.test(target.tmuxPaneId) && TMUX_SESSION_PATTERN.test(target.tmuxSession) && (target.tmuxWindow === undefined || TMUX_WINDOW_PATTERN.test(target.tmuxWindow)) && target.ghosttyBundleId === GHOSTTY_BUNDLE_ID; }
-function rows(stdout: string): readonly (readonly string[])[] { return stdout.split("\n").filter((line) => line.length > 0).map((line) => line.split("\t")); }
+// Printable separators survive tmux formatting for GUI clients without TMUX.
+function rows(stdout: string): readonly (readonly string[])[] { return stdout.split("\n").filter((line) => line.length > 0).map((line) => line.split("|")); }
 export const PANE_ENUMERATION_STATUS = { TRUSTED: "trusted", UNTRUSTED: "untrusted" } as const;
 export type PaneEnumerationStatus = (typeof PANE_ENUMERATION_STATUS)[keyof typeof PANE_ENUMERATION_STATUS];
 interface TrustedPaneEnumeration { readonly status: typeof PANE_ENUMERATION_STATUS.TRUSTED; readonly rows: readonly (readonly string[])[]; }
@@ -79,7 +80,7 @@ export function createGhosttyTmuxNavigator(options: GhosttyTmuxNavigatorOptions 
       if (!isSafeTarget(target)) return NAVIGATION_OUTCOME.UNAVAILABLE;
       let paneOutput: string; try {
         await options.process.execute("tmux", ["has-session", "-t", target.tmuxSession]);
-        paneOutput = (await options.process.execute("tmux", ["list-panes", "-a", "-F", "#{pane_id}\t#{session_id}\t#{window_id}"])).stdout;
+        paneOutput = (await options.process.execute("tmux", ["list-panes", "-a", "-F", "#{pane_id}|#{session_id}|#{window_id}"])).stdout;
       } catch {
         return NAVIGATION_OUTCOME.UNAVAILABLE;
       }
@@ -89,7 +90,7 @@ export function createGhosttyTmuxNavigator(options: GhosttyTmuxNavigatorOptions 
       const windowId = paneRow?.[2];
       if (paneRow === undefined || windowId === undefined) return NAVIGATION_OUTCOME.MISSING;
       let clients: readonly string[]; try {
-        clients = targetableClients((await options.process.execute("tmux", ["list-clients", "-F", "#{client_tty}\t#{session_id}"])).stdout, target);
+        clients = targetableClients((await options.process.execute("tmux", ["list-clients", "-F", "#{client_tty}|#{session_id}"])).stdout, target);
       } catch {
         return NAVIGATION_OUTCOME.UNAVAILABLE;
       }

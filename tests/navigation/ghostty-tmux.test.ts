@@ -8,13 +8,13 @@ function processFor(outputs: readonly string[]) {
 }
 describe("Ghostty tmux navigator", () => {
   it("uses explicit argv to navigate one validated pane through one targetable client", async () => {
-    const process = processFor(["", "%1\t$0\t@1\n", "/dev/ttys001\t$0\n", "", "", "", ""]);
+    const process = processFor(["", "%1|$0|@1\n", "/dev/ttys001|$0\n", "", "", "", ""]);
     const outcome = await createGhosttyTmuxNavigator({ process }).navigate(target);
     expect(outcome).toBe(NAVIGATION_OUTCOME.NAVIGATED);
-    expect(process.execute.mock.calls).toEqual([["tmux", ["has-session", "-t", "$0"]], ["tmux", ["list-panes", "-a", "-F", "#{pane_id}\t#{session_id}\t#{window_id}"]], ["tmux", ["list-clients", "-F", "#{client_tty}\t#{session_id}"]], ["open", ["-b", target.ghosttyBundleId]], ["tmux", ["switch-client", "-c", "/dev/ttys001", "-t", "$0"]], ["tmux", ["select-window", "-t", "@1"]], ["tmux", ["select-pane", "-t", "%1"]]]);
+    expect(process.execute.mock.calls).toEqual([["tmux", ["has-session", "-t", "$0"]], ["tmux", ["list-panes", "-a", "-F", "#{pane_id}|#{session_id}|#{window_id}"]], ["tmux", ["list-clients", "-F", "#{client_tty}|#{session_id}"]], ["open", ["-b", target.ghosttyBundleId]], ["tmux", ["switch-client", "-c", "/dev/ttys001", "-t", "$0"]], ["tmux", ["select-window", "-t", "@1"]], ["tmux", ["select-pane", "-t", "%1"]]]);
   });
   it("returns missing without focusing only when a trustworthy complete enumeration proves the pane absent", async () => {
-    for (const panes of ["", "%2\t$0\t@1\n", "%1\t$2\t@1\n", "%1\t$0\t@2\n"]) {
+    for (const panes of ["", "%2|$0|@1\n", "%1|$2|@1\n", "%1|$0|@2\n"]) {
       const process = processFor(["", panes]);
       const outcome = await createGhosttyTmuxNavigator({ process }).navigate({ ...target, tmuxWindow: "@1" });
       expect(outcome).toBe(NAVIGATION_OUTCOME.MISSING);
@@ -24,7 +24,7 @@ describe("Ghostty tmux navigator", () => {
   it("fails closed as unavailable on malformed, mixed, or untrusted pane enumerations without navigating or proving absence", async () => {
     // Live evidence 2026-08-04: panes %10 and %11 existed while the
     // enumeration was untrusted; treating that as absence released real keys.
-    for (const panes of ["%1\t$0\t@1\textra\n", "%1\t$0\n", "%1\t$0\tnot-a-window-id\n", "pane-1\t$0\t@1\n", "%1\tx$0\t@1\n", "%1\t$0\t@1\n%11\t$0\tbroken\n", "%1\t$0\t@1\n%12\t$0\t@9\u0007\n"]) {
+    for (const panes of ["%1|$0|@1|extra\n", "%1|$0\n", "%1|$0|not-a-window-id\n", "pane-1|$0|@1\n", "%1|x$0|@1\n", "%1|$0|@1\n%11|$0|broken\n", "%1|$0|@1\n%12|$0|@9\u0007\n"]) {
       const process = processFor(["", panes]);
       const outcome = await createGhosttyTmuxNavigator({ process }).navigate(target);
       expect(outcome).toBe(NAVIGATION_OUTCOME.UNAVAILABLE);
@@ -32,8 +32,8 @@ describe("Ghostty tmux navigator", () => {
     }
   });
   it("returns ambiguous without focusing for zero or multiple targetable clients", async () => {
-    for (const clients of ["", "/dev/ttys001\t$0\n/dev/ttys002\t$0\n", "/dev/ttys001\u0000\t$0\n", "/dev/ttys 001\t$0\n"]) {
-      const process = processFor(["", "%1\t$0\t@1\n", clients]);
+    for (const clients of ["", "/dev/ttys001|$0\n/dev/ttys002|$0\n", "/dev/ttys001\u0000|$0\n", "/dev/ttys 001|$0\n"]) {
+      const process = processFor(["", "%1|$0|@1\n", clients]);
       const outcome = await createGhosttyTmuxNavigator({ process }).navigate(target);
       expect(outcome).toBe(NAVIGATION_OUTCOME.AMBIGUOUS);
       expect(process.execute).toHaveBeenCalledTimes(3);
@@ -41,11 +41,27 @@ describe("Ghostty tmux navigator", () => {
   });
   it("contains every command-stage failure as unavailable", async () => {
     for (let failedAt = 0; failedAt < 7; failedAt += 1) {
-      let call = 0; const outputs = ["", "%1\t$0\t@1\n", "/dev/ttys001\t$0\n", "", "", "", ""];
+      let call = 0; const outputs = ["", "%1|$0|@1\n", "/dev/ttys001|$0\n", "", "", "", ""];
       const execute = vi.fn<(command: string, args: readonly string[]) => Promise<{ readonly stdout: string }>>().mockImplementation(() => Promise.resolve(call++ === failedAt ? Promise.reject(new Error("sensitive output")) : { stdout: outputs[call - 1] ?? "" }));
       expect(await createGhosttyTmuxNavigator({ process: { execute } }).navigate(target)).toBe(NAVIGATION_OUTCOME.UNAVAILABLE);
     }
   });
+  it("uses a printable pipe separator for every tmux format and fails closed on tab-delimited rows", async () => {
+    // tmux strips tabs from formats unless the client runs inside TMUX, so the
+    // GUI-launched plugin saw one field and every navigation proved nothing.
+    const process = processFor(["", "%1|$0|@1\n", "/dev/ttys001|$0\n", "", "", "", ""]);
+    expect(await createGhosttyTmuxNavigator({ process }).navigate(target)).toBe(NAVIGATION_OUTCOME.NAVIGATED);
+    const formats = process.execute.mock.calls.flatMap(([, args]) => args).filter((argument) => argument.includes("#{"));
+    expect(formats.length).toBeGreaterThan(0);
+    for (const format of formats) {
+      expect(format).toContain("|");
+      expect(format).not.toContain("\t");
+    }
+
+    const tabbed = processFor(["", "%1\t$0\t@1\n"]);
+    expect(await createGhosttyTmuxNavigator({ process: tabbed }).navigate(target)).toBe(NAVIGATION_OUTCOME.UNAVAILABLE);
+  });
+
   it("settles a resistant child after TERM then KILL without leaking timers", async () => {
     const kill = vi.fn(); const timers: (() => void)[] = []; const launch = vi.fn<NavigationLauncher["launch"]>().mockImplementation(() => ({ child: { kill: (signal) => { kill(signal); } }, result: new Promise<NavigationProcessResult>(() => undefined) })); const launcher: NavigationLauncher = { launch };
     const timer: NavigationTimer = { schedule: (callback) => { timers.push(callback); return callback; }, cancel: vi.fn() };
