@@ -10,6 +10,7 @@ import {
 } from "../core/reducer";
 import { SESSION_SLOT_COLOR, SESSION_SLOT_SVG_PAINT, type SessionSlotColor } from "../core/colors";
 import { UUID_V4_PATTERN } from "../core/events";
+import { createTmuxPaneDiscovery, PANE_DISCOVERY_INTERVAL_MS, type TmuxPaneDiscovery } from "../persistence/pane-discovery";
 import { SESSION_STATUS, type LocalAgentStatusEvent, type LocalAgentTargetMetadata } from "../core/types";
 import {
   NAVIGATION_OUTCOME,
@@ -104,6 +105,7 @@ export interface SessionSlotControllerOptions {
   readonly navigator?: AssignedTargetNavigator;
   readonly windowNameResolver?: SessionWindowNameResolver;
   readonly inspector?: SessionSlotInspector;
+  readonly paneDiscovery?: TmuxPaneDiscovery;
 }
 
 const productionControllerOptions: SessionSlotControllerOptions = {
@@ -117,6 +119,7 @@ const productionControllerOptions: SessionSlotControllerOptions = {
     info: (message) => streamDeck.logger.info(message),
   },
   navigator: ghosttyTmuxNavigator,
+  paneDiscovery: createTmuxPaneDiscovery(),
   windowNameResolver: createTmuxWindowNameResolver(),
   inspector: {
     sendToPropertyInspector: (payload) => streamDeck.ui.sendToPropertyInspector(payload as Parameters<typeof streamDeck.ui.sendToPropertyInspector>[0]),
@@ -157,6 +160,10 @@ export class SessionSlotController {
   #stateSubscriber: SessionStateSubscriber | undefined = undefined;
   #windowNames = new Map<string, string | undefined>();
   #propertyInspectorActionId: string | undefined = undefined;
+  #paneDiscoveryEnabled = false;
+  #paneDiscoveryGeneration = 0;
+  #paneDiscoveryTimer: unknown;
+  #paneDiscoveryInFlight = false;
 
   constructor(private readonly options: SessionSlotControllerOptions = productionControllerOptions) {}
 
@@ -177,6 +184,49 @@ export class SessionSlotController {
     this.#state = state;
     await this.#resolveWindowNames(state);
     await this.refresh(this.options.clock.now());
+  }
+
+  async startPaneDiscovery(): Promise<void> {
+    if (this.#paneDiscoveryEnabled || this.options.paneDiscovery === undefined) return;
+    this.#paneDiscoveryEnabled = true;
+    const generation = ++this.#paneDiscoveryGeneration;
+    await this.#discoverPanes(generation);
+    this.#schedulePaneDiscovery(generation);
+  }
+
+  stopPaneDiscovery(): void {
+    this.#paneDiscoveryEnabled = false;
+    this.#paneDiscoveryGeneration += 1;
+    if (this.#paneDiscoveryTimer !== undefined) this.options.scheduler.cancel(this.#paneDiscoveryTimer);
+    this.#paneDiscoveryTimer = undefined;
+  }
+
+  #schedulePaneDiscovery(generation: number): void {
+    if (!this.#paneDiscoveryEnabled || generation !== this.#paneDiscoveryGeneration) return;
+    this.#paneDiscoveryTimer = this.options.scheduler.schedule(() => {
+      this.#paneDiscoveryTimer = undefined;
+      this.#schedulePaneDiscovery(generation);
+      void this.#discoverPanes(generation);
+    }, PANE_DISCOVERY_INTERVAL_MS);
+  }
+
+  async #discoverPanes(generation: number): Promise<void> {
+    if (this.#paneDiscoveryInFlight || !this.#paneDiscoveryEnabled || generation !== this.#paneDiscoveryGeneration) return;
+    this.#paneDiscoveryInFlight = true;
+    try {
+      const panes = await this.options.paneDiscovery?.discover();
+      if (panes === undefined || !this.#paneDiscoveryEnabled || generation !== this.#paneDiscoveryGeneration) return;
+      const previous = this.#state;
+      this.#state = reduceSessionState(previous, { kind: SESSION_REDUCER_ACTION.PANE_DISCOVERY, panes });
+      if (this.#state === previous) return;
+      await this.#resolveWindowNames(this.#state);
+      await this.refresh(this.options.clock.now());
+      this.#notifyStateChanged(previous);
+    } catch {
+      // tmux failures must not clear keys or stop future discovery.
+    } finally {
+      this.#paneDiscoveryInFlight = false;
+    }
   }
 
   async #resolveWindowNames(state: SessionState): Promise<void> {
@@ -323,6 +373,7 @@ export class SessionSlotController {
   }
 
   dispose(): void {
+    this.stopPaneDiscovery();
     for (const visible of this.#visibleActions.values()) this.#cancelVisibleWork(visible);
     this.#visibleActions.clear();
   }

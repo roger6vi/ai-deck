@@ -24,6 +24,9 @@ export function deriveSlotColor(slot: SessionSlot | undefined, now: number): Ses
     return SESSION_SLOT_COLOR.GRAY;
   }
   if (slot.lifecycle === SESSION_STATUS.ERROR) return SESSION_SLOT_COLOR.RED;
+  // Baseline presence reuses the existing green: a live pane is neither a
+  // running agent nor an unread result, so it must not borrow their paints.
+  if (slot.lifecycle === SESSION_STATUS.IDLE) return SESSION_SLOT_COLOR.GREEN;
   if (slot.lifecycle === SESSION_STATUS.COMPLETED) {
     return slot.acknowledged ? SESSION_SLOT_COLOR.GREEN : SESSION_SLOT_COLOR.BLUE;
   }

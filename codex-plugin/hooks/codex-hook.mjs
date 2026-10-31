@@ -69,8 +69,7 @@ function resolveAdapterEnvironment(env = process.env) {
 const SESSION_STATUS = {
     STARTED: "started",
     COMPLETED: "completed",
-    PANE_DISAPPEARED: "pane-disappeared",
-};
+    PANE_DISAPPEARED: "pane-disappeared"};
 
 const CODEX_ADAPTER_SOURCE = "codex";
 /**

@@ -497,3 +497,74 @@ describe("session status reducer", () => {
     expect(afterClaude.retiredSessions).toHaveLength(0);
   });
 });
+
+describe("pane discovery snapshots", () => {
+  function descriptor(paneId: string, number: number, tmuxSession = "$0", tmuxWindow = `@${number}`) {
+    return {
+      sessionId: `00000000-0000-4000-8000-00000000d0${number.toString().padStart(2, "0")}`,
+      target: { tmuxPaneId: paneId, tmuxSession, tmuxWindow, ghosttyBundleId: "com.mitchellh.ghostty" },
+    };
+  }
+
+  function discover(state: ReturnType<typeof createSessionState>, panes: readonly ReturnType<typeof descriptor>[]) {
+    return reduceSessionState(state, { kind: SESSION_REDUCER_ACTION.PANE_DISCOVERY, panes });
+  }
+
+  it("adds live panes as idle placeholders painted with the existing green", () => {
+    const state = discover(createSessionState(), [descriptor("%0", 0), descriptor("%6", 6)]);
+
+    expect(state.slots[0]).toMatchObject({
+      index: 0,
+      sessionId: "00000000-0000-4000-8000-00000000d000",
+      source: "tmux",
+      lifecycle: SESSION_STATUS.IDLE,
+      target: { tmuxPaneId: "%0", tmuxSession: "$0", tmuxWindow: "@0" },
+    });
+    expect(state.slots[0]?.assignmentId).toBeDefined();
+    // Presence is not a lifecycle claim, so nothing event-shaped is invented.
+    expect(state.slots[0]?.lastEventId).toBeUndefined();
+    expect(state.slots[0]?.lastTimestamp).toBeUndefined();
+    expect(state.slots.map((slot) => slot.target?.tmuxPaneId)).toEqual(["%0", "%6", undefined, undefined, undefined]);
+    expect(deriveSlotColor(state.slots[0], 0)).toBe(SESSION_SLOT_COLOR.GREEN);
+    expect(deriveSlotColor(state.slots[0], Number.MAX_SAFE_INTEGER)).toBe(SESSION_SLOT_COLOR.GREEN);
+  });
+
+  it("drops a vanished placeholder without retiring it and keeps the remaining slots stable", () => {
+    const known = discover(createSessionState(), [descriptor("%0", 0), descriptor("%6", 6)]);
+
+    const gone = discover(known, [descriptor("%0", 0)]);
+
+    expect(gone.slots[0]?.target?.tmuxPaneId).toBe("%0");
+    expect(gone.slots[1]).toEqual({ index: 1 });
+    expect(gone.retiredSessions).toHaveLength(0);
+    expect(gone.unassignedSessions).toHaveLength(0);
+    expect(gone.slots.map((slot) => slot.index)).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it("never overwrites a tool lifecycle, a user-parked session, or an unread completion", () => {
+    const running = apply(createSessionState(), event({ sessionId: SESSION_IDS[0], tmuxPaneId: "%1" }));
+    expect(discover(running, [descriptor("%1", 1)])).toBe(running);
+
+    const parked = reduceSessionState(running, { kind: SESSION_REDUCER_ACTION.CLEAR_SLOT, slotIndex: 0, byUser: true });
+    expect(discover(parked, [descriptor("%1", 1)])).toBe(parked);
+
+    const completed = apply(createSessionState(), event({ sessionId: SESSION_IDS[0], lifecycle: SESSION_STATUS.COMPLETED, tmuxPaneId: "%2" }));
+    expect(discover(completed, [descriptor("%2", 2)])).toBe(completed);
+    expect(deriveSlotColor(completed.slots[0], 1)).toBe(SESSION_SLOT_COLOR.BLUE);
+  });
+
+  it("parks discovered panes in the unassigned bucket when every key is taken", () => {
+    let state = createSessionState();
+    for (let index = 0; index < SLOT_COUNT; index += 1) {
+      state = apply(state, event({ eventNumber: index + 1, sessionId: SESSION_IDS[index] ?? SESSION_IDS[0], tmuxPaneId: `%${index + 1}` }));
+    }
+
+    const crowded = discover(state, [descriptor("%8", 8), descriptor("%9", 9)]);
+
+    expect(crowded.slots.map((slot) => slot.sessionId)).toEqual([...SESSION_IDS.slice(0, SLOT_COUNT)]);
+    expect(crowded.unassignedSessions.map((session) => session.sessionId)).toEqual([
+      "00000000-0000-4000-8000-00000000d008",
+      "00000000-0000-4000-8000-00000000d009",
+    ]);
+  });
+});

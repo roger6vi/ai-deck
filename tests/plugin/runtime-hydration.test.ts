@@ -18,6 +18,8 @@ interface FakeController {
   dispose(): void;
   hydrateState?(state: SessionState): Promise<void>;
   subscribeToStateChanges?(subscriber: (state: SessionState) => void | Promise<void>): () => void;
+  startPaneDiscovery?(): Promise<void>;
+  stopPaneDiscovery?(): void;
 }
 
 describe("plugin runtime persistence wiring", () => {
@@ -111,6 +113,63 @@ describe("plugin runtime persistence wiring", () => {
 
       await runtime.stop();
       expect(unsubscribe).toHaveBeenCalledTimes(1);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  it("starts baseline pane discovery after hydration and stops it before disposing on stop", async () => {
+    const root = await temporaryRoot();
+    try {
+      const order: string[] = [];
+      const controller: FakeController = {
+        handleStatusEvent: vi.fn(async () => undefined),
+        dispose: vi.fn(() => { order.push("dispose"); }),
+        hydrateState: vi.fn(async () => { order.push("hydrate"); }),
+        subscribeToStateChanges: vi.fn(() => () => undefined),
+        startPaneDiscovery: vi.fn(async () => { order.push("discover"); }),
+        stopPaneDiscovery: vi.fn(() => { order.push("stop-discovery"); }),
+      };
+
+      const runtime = await startPluginRuntime({
+        pluginRoot: root,
+        controller,
+        persistence: { load: async () => createSessionState(), save: vi.fn(async () => undefined) },
+      });
+
+      expect(order).toEqual(["hydrate", "discover"]);
+      await runtime.stop();
+      expect(order).toEqual(["hydrate", "discover", "stop-discovery", "dispose"]);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  it("stops pane discovery during startup rollback and contains a failing discovery start", async () => {
+    const root = await temporaryRoot();
+    try {
+      const controller: FakeController = {
+        handleStatusEvent: vi.fn(async () => undefined),
+        dispose: vi.fn(),
+        startPaneDiscovery: vi.fn(async () => undefined),
+        stopPaneDiscovery: vi.fn(),
+      };
+      await expect(startPluginRuntime({
+        pluginRoot: root,
+        controller,
+        publishEndpoint: async () => { throw new Error("publish failure"); },
+      })).rejects.toThrow(PLUGIN_RUNTIME_LOG_MESSAGE.STARTUP_FAILED);
+      expect(controller.stopPaneDiscovery).toHaveBeenCalledTimes(1);
+      expect(controller.dispose).toHaveBeenCalledTimes(1);
+
+      const failing: FakeController = {
+        handleStatusEvent: vi.fn(async () => undefined),
+        dispose: vi.fn(),
+        startPaneDiscovery: vi.fn(async () => { throw new Error("tmux failure"); }),
+      };
+      const runtime = await startPluginRuntime({ pluginRoot: root, controller: failing });
+      await runtime.stop();
+      expect(failing.dispose).toHaveBeenCalledTimes(1);
     } finally {
       await rm(root, { force: true, recursive: true });
     }

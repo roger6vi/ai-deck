@@ -22,6 +22,7 @@ const REQUIRED_TARGET_FIELDS = ["tmuxPaneId", "tmuxSession", "ghosttyBundleId"] 
 const INVALID_EVENT_VALUES = [
   ["schemaVersion", 2],
   ["source", "unknown"],
+  ["source", "tmux"],
   ["lifecycle", "idle"],
   ["target", null],
   ["target", "not-a-target"],
@@ -80,8 +81,8 @@ function expectInvalid(value: unknown, sensitive = false): void {
 afterEach(() => vi.restoreAllMocks());
 
 describe("local agent status event privacy boundary", () => {
-  const validCases = Object.values(LOCAL_AGENT_TOOL).flatMap((source) =>
-    Object.values(SESSION_STATUS).flatMap((lifecycle) =>
+  const validCases = Object.values(LOCAL_AGENT_TOOL).filter((source) => source !== LOCAL_AGENT_TOOL.TMUX).flatMap((source) =>
+    Object.values(SESSION_STATUS).filter((lifecycle) => lifecycle !== SESSION_STATUS.IDLE).flatMap((lifecycle) =>
       [false, true].flatMap((sequence) => [false, true].map((window) => ({ source, lifecycle, sequence, window }))),
     ),
   );

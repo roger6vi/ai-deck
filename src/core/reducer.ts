@@ -6,6 +6,7 @@ export const SESSION_REDUCER_ACTION = {
   EVENT: "event",
   PHYSICAL_KEY_DOWN: "physical-key-down",
   PANE_MISSING: "pane-missing",
+  PANE_DISCOVERY: "pane-discovery",
   MOVE_SESSION: "move-session",
   CLEAR_SLOT: "clear-slot",
   RETAIN_UNASSIGNED: "retain-unassigned",
@@ -94,7 +95,26 @@ export interface RetainUnassignedAction {
   readonly sessions: readonly UnassignedSession[];
 }
 
-export type SessionReducerAction = SessionEventAction | PhysicalKeyDownAction | PaneMissingAction | MoveSessionAction | ClearSlotAction | RetainUnassignedAction;
+/**
+ * One live pane from a complete enumeration. The identity is derived outside
+ * the reducer from the tmux session and pane, so this module stays pure.
+ */
+export interface DiscoveredPaneEntry {
+  readonly sessionId: string;
+  readonly target: LocalAgentTargetMetadata;
+}
+
+/**
+ * A whole-enumeration snapshot, not an event: it may add or drop unclaimed
+ * presence placeholders and nothing else. A pane a tool already owns keeps its
+ * lifecycle, key assignment, manual parking, and unread state untouched.
+ */
+export interface PaneDiscoveryAction {
+  readonly kind: typeof SESSION_REDUCER_ACTION.PANE_DISCOVERY;
+  readonly panes: readonly DiscoveredPaneEntry[];
+}
+
+export type SessionReducerAction = SessionEventAction | PhysicalKeyDownAction | PaneMissingAction | PaneDiscoveryAction | MoveSessionAction | ClearSlotAction | RetainUnassignedAction;
 
 function copyTarget(target: LocalAgentTargetMetadata): LocalAgentTargetMetadata {
   const copied = {
@@ -144,6 +164,27 @@ function withoutUnassigned(unassignedSessions: readonly UnassignedSession[], ses
 function unassignedFromSlot(slot: SessionSlot): UnassignedSession {
   const { index: _index, ...session } = slot;
   return session;
+}
+
+/** A pane's deck identity is its tmux session plus its pane id, never a title. */
+function paneIdentity(target: LocalAgentTargetMetadata): string {
+  return `${target.tmuxSession}|${target.tmuxPaneId}`;
+}
+
+/** Presence the plugin discovered itself, as opposed to anything a tool claimed. */
+function isDiscoveredPresence(session: { readonly source?: SessionSlot["source"] }): boolean {
+  return session.source === LOCAL_AGENT_TOOL.TMUX;
+}
+
+function discoveredPresence(index: number, entry: DiscoveredPaneEntry): SessionSlot {
+  return {
+    index,
+    assignmentId: entry.sessionId,
+    sessionId: entry.sessionId,
+    source: LOCAL_AGENT_TOOL.TMUX,
+    lifecycle: SESSION_STATUS.IDLE,
+    target: copyTarget(entry.target),
+  };
 }
 
 function isNewer(lastTimestamp: number, lastSequence: number | undefined, event: LocalAgentStatusEvent): boolean {
@@ -304,6 +345,31 @@ function reduceEvent(state: SessionState, event: LocalAgentStatusEvent): Session
   const retiredSessions = retired === undefined
     ? state.retiredSessions
     : state.retiredSessions.filter((session) => session.sessionId !== event.sessionId);
+  const placeholderIndex = state.slots.findIndex(
+    (slot) => isDiscoveredPresence(slot) && slot.target !== undefined && paneIdentity(slot.target) === paneIdentity(event.target),
+  );
+  if (placeholderIndex >= 0) {
+    // The pane already has a key as bare presence. The tool that now owns it
+    // takes that entry over in place; a second entry for the same pane is
+    // exactly the duplicate this contract forbids.
+    const slots = state.slots.map((slot) => slot.index === placeholderIndex
+      ? slotFromEvent(placeholderIndex, event, slot.assignmentId ?? event.eventId)
+      : slot);
+    return freezeState(slots, retiredSessions, state.unassignedSessions);
+  }
+  const placeholderSession = state.unassignedSessions.find(
+    (session) => isDiscoveredPresence(session) && session.target !== undefined && paneIdentity(session.target) === paneIdentity(event.target),
+  );
+  if (placeholderSession !== undefined) {
+    const remaining = state.unassignedSessions.filter((session) => session !== placeholderSession);
+    const upgraded = unassignedFromSlot(slotFromEvent(0, event, placeholderSession.assignmentId ?? event.eventId));
+    const freeForUpgraded = state.slots.find((slot) => slot.sessionId === undefined);
+    if (placeholderSession.parkedByUser !== true && freeForUpgraded !== undefined) {
+      const slots = state.slots.map((slot) => slot.index === freeForUpgraded.index ? { ...upgraded, index: freeForUpgraded.index } : slot);
+      return freezeState(slots, retiredSessions, remaining);
+    }
+    return freezeState(state.slots, retiredSessions, [...remaining, { ...upgraded, ...(placeholderSession.parkedByUser === true ? { parkedByUser: true } : {}) }]);
+  }
   const freeSlot = state.slots.find((slot) => slot.sessionId === undefined);
   if (freeSlot === undefined) {
     // Every key is taken. Parking it keeps a running agent reachable through
@@ -388,6 +454,60 @@ function reduceRetainUnassigned(state: SessionState, action: RetainUnassignedAct
   return freezeState(state.slots, retired, action.sessions);
 }
 
+/**
+ * Reconciles presence with one complete enumeration.
+ *
+ * Only entries this action created — bare presence, no lifecycle claim — are
+ * added or withdrawn, and only when their pane is fully absent. A pane a tool
+ * already owns keeps everything: dropping or rewriting its entry on mere
+ * presence evidence would destroy a real lifecycle, a key the user chose, an
+ * unread result, or a parked session.
+ */
+function reducePaneDiscovery(state: SessionState, action: PaneDiscoveryAction): SessionState {
+  const discovered = new Map<string, DiscoveredPaneEntry>();
+  for (const entry of action.panes) {
+    const identity = paneIdentity(entry.target);
+    if (!discovered.has(identity)) discovered.set(identity, entry);
+  }
+  let changed = false;
+  const slots: SessionSlot[] = state.slots.map((slot) => {
+    if (!isDiscoveredPresence(slot) || slot.target === undefined) return slot;
+    if (discovered.has(paneIdentity(slot.target))) return slot;
+    changed = true;
+    return { index: slot.index };
+  });
+  const unassigned: UnassignedSession[] = [];
+  for (const session of state.unassignedSessions) {
+    if (!isDiscoveredPresence(session)) {
+      unassigned.push(session);
+      continue;
+    }
+    if (session.target !== undefined && discovered.has(paneIdentity(session.target))) {
+      unassigned.push(session);
+      continue;
+    }
+    // Presence is not a session, so a vanished placeholder is not retired.
+    changed = true;
+  }
+  const known = new Set<string>();
+  for (const slot of slots) if (slot.target !== undefined) known.add(paneIdentity(slot.target));
+  for (const session of unassigned) if (session.target !== undefined) known.add(paneIdentity(session.target));
+  const additions = [...discovered.values()].filter((entry) => !known.has(paneIdentity(entry.target)));
+  if (additions.length === 0) return changed ? freezeState(slots, state.retiredSessions, unassigned) : state;
+  let nextSlots = slots;
+  let nextUnassigned = unassigned;
+  for (const entry of additions) {
+    const free = nextSlots.find((slot) => slot.sessionId === undefined);
+    if (free === undefined) {
+      const { index: _index, ...session } = discoveredPresence(0, entry);
+      nextUnassigned = [...nextUnassigned, session];
+      continue;
+    }
+    nextSlots = nextSlots.map((slot) => slot.index === free.index ? discoveredPresence(free.index, entry) : slot);
+  }
+  return freezeState(nextSlots, state.retiredSessions, nextUnassigned);
+}
+
 export function createSessionState(): SessionState {
   const slots = Array.from({ length: SESSION_REDUCER_LIMITS.SLOT_COUNT }, (_, index) => ({ index }));
   return freezeState(slots, [], []);
@@ -396,6 +516,7 @@ export function createSessionState(): SessionState {
 export function reduceSessionState(state: SessionState, action: SessionReducerAction): SessionState {
   if (action.kind === SESSION_REDUCER_ACTION.EVENT) return reduceEvent(state, action.event);
   if (action.kind === SESSION_REDUCER_ACTION.PANE_MISSING) return reducePaneMissing(state, action);
+  if (action.kind === SESSION_REDUCER_ACTION.PANE_DISCOVERY) return reducePaneDiscovery(state, action);
   if (action.kind === SESSION_REDUCER_ACTION.MOVE_SESSION) return reduceMoveSession(state, action);
   if (action.kind === SESSION_REDUCER_ACTION.CLEAR_SLOT) return reduceClearSlot(state, action);
   if (action.kind === SESSION_REDUCER_ACTION.RETAIN_UNASSIGNED) return reduceRetainUnassigned(state, action);

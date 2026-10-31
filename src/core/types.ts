@@ -2,6 +2,12 @@ export const LOCAL_AGENT_TOOL = {
   CODEX: "codex",
   OPENCODE: "opencode",
   CLAUDE: "claude",
+  /**
+   * Not an agent and never emitted by an adapter: the plugin's own baseline
+   * pane discovery marks a live tmux pane with it, so presence can be shown
+   * without inventing a lifecycle event for it.
+   */
+  TMUX: "tmux",
 } as const;
 
 export type LocalAgentTool = (typeof LOCAL_AGENT_TOOL)[keyof typeof LOCAL_AGENT_TOOL];
@@ -12,6 +18,8 @@ export const SESSION_STATUS = {
   COMPLETED: "completed",
   ERROR: "error",
   PANE_DISAPPEARED: "pane-disappeared",
+  /** Baseline presence only: a live pane no tool has claimed yet. */
+  IDLE: "idle",
 } as const;
 
 export type SessionStatus = (typeof SESSION_STATUS)[keyof typeof SESSION_STATUS];

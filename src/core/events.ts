@@ -111,11 +111,12 @@ function cloneToFrozenNullPrototype<T extends object>(value: T): Readonly<T> {
 }
 
 function isTool(value: unknown): value is LocalAgentTool {
-  return typeof value === "string" && Object.values(LOCAL_AGENT_TOOL).includes(value as LocalAgentTool);
+  // tmux presence is internal reducer state, never an adapter event source.
+  return typeof value === "string" && value !== LOCAL_AGENT_TOOL.TMUX && Object.values(LOCAL_AGENT_TOOL).includes(value as LocalAgentTool);
 }
 
 function isStatus(value: unknown): value is SessionStatus {
-  return typeof value === "string" && Object.values(SESSION_STATUS).includes(value as SessionStatus);
+  return typeof value === "string" && value !== SESSION_STATUS.IDLE && Object.values(SESSION_STATUS).includes(value as SessionStatus);
 }
 
 function parseTarget(value: unknown): LocalAgentTargetMetadata | undefined {

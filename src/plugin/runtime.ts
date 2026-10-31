@@ -34,6 +34,8 @@ export interface PluginRuntimeController {
   handleStatusEvent(event: LocalAgentStatusEvent, now: number): Promise<void>;
   dispose(): void;
   hydrateState?(state: SessionState): Promise<void>;
+  startPaneDiscovery?(): Promise<void>;
+  stopPaneDiscovery?(): void;
   subscribeToStateChanges?(subscriber: (state: SessionState) => void | Promise<void>): () => void;
 }
 
@@ -76,7 +78,7 @@ function report(logger: PluginRuntimeLogger, message: string): void {
 }
 
 async function rollbackRuntime(controller: PluginRuntimeController, server?: LocalEventServerHandle): Promise<void> {
-  const cleanup = [Promise.resolve().then(() => controller.dispose())];
+  const cleanup = [Promise.resolve().then(() => { controller.stopPaneDiscovery?.(); controller.dispose(); })];
   if (server !== undefined) cleanup.push(server.close());
   await Promise.allSettled(cleanup);
 }
@@ -116,6 +118,11 @@ export async function startPluginRuntime(options: PluginRuntimeOptions = {}): Pr
     }
   }
   try {
+    await controller.startPaneDiscovery?.();
+  } catch {
+    report(logger, PLUGIN_RUNTIME_LOG_MESSAGE.HYDRATION_FAILED);
+  }
+  try {
     await publishEndpoint({ pluginRoot: options.pluginRoot ?? derivePluginRootFromBundledModuleUrl(import.meta.url), address: server.address, port: server.port, token, pid });
   } catch {
     if (unsubscribeStateChanges !== undefined) { try { unsubscribeStateChanges(); } catch {} }
@@ -126,6 +133,7 @@ export async function startPluginRuntime(options: PluginRuntimeOptions = {}): Pr
   let shutdown: Promise<void> | undefined;
   const stop = (): Promise<void> => shutdown ??= (async () => {
     if (unsubscribeStateChanges !== undefined) { try { unsubscribeStateChanges(); } catch {} }
+    controller.stopPaneDiscovery?.();
     controller.dispose();
     await server.close();
   })();

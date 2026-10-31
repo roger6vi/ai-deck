@@ -175,6 +175,16 @@ npm run restart:plugin
 This creates a fresh bounded C1 server and a fresh
 `runtime/endpoint.json` with a new port and token.
 
+**Live tmux panes are not listed.** The plugin discovers panes directly from tmux
+at startup and every five seconds, independently of which terminal agent is
+running. Unclaimed panes appear as green idle presence; this does not claim
+that an agent is running or has completed a response. Agent hooks can upgrade
+that same pane in place to amber/blue/red without adding a duplicate key.
+Manually unassigned sessions stay unassigned. A failed or malformed enumeration
+keeps existing presence unchanged. Discovery stops when the plugin stops.
+Existing profile keys must use `roger6vi.ai-deck.session-slot` and the matching
+`Plugin.UUID`; use the profile migration above for older profiles.
+
 **Session slots show stale state after restart.** The plugin persists
 its reducer state to `runtime/state.json` and reconciles against live
 tmux panes at startup. If reconciliation cannot reach `tmux` (for
