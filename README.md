@@ -182,6 +182,10 @@ that an agent is running or has completed a response. Agent hooks can upgrade
 that same pane in place to amber/blue/red without adding a duplicate key.
 Manually unassigned sessions stay unassigned. A failed or malformed enumeration
 keeps existing presence unchanged. Discovery stops when the plugin stops.
+Physical key presses acknowledge a session only after successful navigation.
+Missing, ambiguous, or unavailable navigation leaves assignment and unread state
+unchanged; authoritative lifecycle evidence and startup reconciliation handle
+missing panes.
 Existing profile keys must use `roger6vi.ai-deck.session-slot` and the matching
 `Plugin.UUID`; use the profile migration above for older profiles.
 

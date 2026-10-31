@@ -257,28 +257,69 @@ describe("session slot Stream Deck integration", () => {
     expect(decodeSdkSvgImage(imageFor(action))).toContain('fill="#B45309"');
   });
 
-  it("releases only a still-matching missing target and retains ambiguous completed assignments as acknowledged", async () => {
-    const controller = controllerWith({ navigate: vi.fn().mockResolvedValue(NAVIGATION_OUTCOME.MISSING) }); const action = new SessionSlotActionBase(controller, () => 2); const first = key("first", 0);
+  it("keeps three running sessions assigned, listed, and amber when navigation reports missing", async () => {
+    const navigate = vi.fn<AssignedTargetNavigator["navigate"]>().mockResolvedValue(NAVIGATION_OUTCOME.MISSING);
+    const sendToPropertyInspector = vi.fn<(payload: unknown) => Promise<void>>().mockResolvedValue(undefined);
+    const controller = new SessionSlotController({
+      clock: { now: () => 10 },
+      scheduler: { schedule: () => 0, cancel: () => undefined },
+      logger: { error: vi.fn(), info: vi.fn() },
+      navigator: { navigate },
+      inspector: { sendToPropertyInspector },
+    });
+    const action = new SessionSlotActionBase(controller, () => 10);
+    const keys = SESSION_IDS.map((_, index) => key(`session-${index}`, index));
+    const persisted: unknown[] = [];
+    controller.subscribeToStateChanges((state) => { persisted.push(state); });
+    await Promise.all(keys.map((visible) => action.onWillAppear(appear(visible))));
+    for (const [index, sessionId] of SESSION_IDS.entries()) {
+      await controller.handleStatusEvent(status({ lifecycle: SESSION_STATUS.RUNNING, sessionId, timestamp: index + 1 }), index + 1);
+    }
+    await controller.handlePropertyInspectorAppeared(keys[0]?.id ?? "missing-key");
+    const beforePresses = controller.state;
+    const persistenceCount = persisted.length;
+    const inspectorPushCount = sendToPropertyInspector.mock.calls.length;
+
+    await Promise.all(keys.map((visible) => action.onKeyDown({ action: visible as unknown as KeyAction } as KeyDownEvent)));
+
+    expect(controller.state).toBe(beforePresses);
+    expect(controller.state.retiredSessions).toEqual([]);
+    expect(controller.state.slots.slice(0, 3).map((slot) => slot.sessionId)).toEqual(SESSION_IDS);
+    expect(controller.state.slots.slice(0, 3).map((slot) => slot.acknowledged)).toEqual([false, false, false]);
+    expect(keys.map(imageFor)).toEqual(keys.map(() => sessionSlotSvgDataUri(SESSION_SLOT_COLOR.AMBER)));
+    expect(persisted).toHaveLength(persistenceCount);
+    expect(sendToPropertyInspector).toHaveBeenCalledTimes(inspectorPushCount);
+    expect(sendToPropertyInspector.mock.calls.at(-1)?.[0]).toMatchObject({
+      type: "sessions",
+      sessions: SESSION_IDS.map((sessionId, slotIndex) => ({ sessionId, slotIndex, source: "opencode", lifecycle: "running" })),
+    });
+
+    await controller.handleStatusEvent(status({
+      eventId: "de305d54-75b4-431b-adb2-eb6b9e546004",
+      lifecycle: SESSION_STATUS.PANE_DISAPPEARED,
+      sessionId: SESSION_IDS[1],
+      timestamp: 4,
+    }), 4);
+
+    expect(controller.state.slots[1]?.sessionId).toBeUndefined();
+    expect(controller.state.retiredSessions.map((session) => session.sessionId)).toEqual([SESSION_IDS[1]]);
+    expect(imageFor(keys[1] as MockKey)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.GRAY));
+    expect(persisted).toHaveLength(persistenceCount + 1);
+  });
+
+  it.each([NAVIGATION_OUTCOME.MISSING, NAVIGATION_OUTCOME.AMBIGUOUS])("keeps a completed unread session blue when navigation returns %s", async (outcome) => {
+    const controller = controllerWith({ navigate: vi.fn().mockResolvedValue(outcome) }); const action = new SessionSlotActionBase(controller, () => 2); const first = key("first", 0);
     await action.onWillAppear(appear(first));
     await controller.handleStatusEvent(status({ tmuxPaneId: "%1" }), 1);
-    await action.onKeyDown({ action: first as unknown as KeyAction } as KeyDownEvent);
-    expect(controller.state.slots[0]?.sessionId).toBeUndefined();
-    expect(imageFor(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.GRAY));
-    // One failed lookup frees the key; it never destroys the session, which a
-    // single 200ms tmux query is far too thin a basis for.
-    expect(controller.state.unassignedSessions.map((session) => session.sessionId)).toEqual([SESSION_IDS[0]]);
-    expect(controller.state.retiredSessions).toHaveLength(0);
-    const ambiguousController = controllerWith({ navigate: vi.fn().mockResolvedValue(NAVIGATION_OUTCOME.AMBIGUOUS) }); const ambiguousAction = new SessionSlotActionBase(ambiguousController, () => 2); const ambiguousKey = key("ambiguous", 0);
-    await ambiguousAction.onWillAppear(appear(ambiguousKey));
-    await ambiguousController.handleStatusEvent(status({ tmuxPaneId: "%2" }), 1);
-    await ambiguousController.handleStatusEvent(status({ eventId: "de305d54-75b4-431b-adb2-eb6b9e546002", lifecycle: SESSION_STATUS.COMPLETED, tmuxPaneId: "%2", timestamp: 2 }), 2);
+    await controller.handleStatusEvent(status({ eventId: "de305d54-75b4-431b-adb2-eb6b9e546002", lifecycle: SESSION_STATUS.COMPLETED, tmuxPaneId: "%1", timestamp: 2 }), 2);
+    const beforePress = controller.state;
 
-    await ambiguousAction.onKeyDown({ action: ambiguousKey as unknown as KeyAction } as KeyDownEvent);
-    expect(ambiguousController.state.slots[0]?.sessionId).toBe(SESSION_IDS[0]);
-    // Ambiguity aborts before any tmux command runs, so the user was never
-    // taken anywhere: the key must keep saying the response is unread.
-    expect(imageFor(ambiguousKey)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.BLUE));
-    expect(ambiguousController.state.slots[0]?.acknowledged).toBe(false);
+    await action.onKeyDown({ action: first as unknown as KeyAction } as KeyDownEvent);
+
+    expect(controller.state).toBe(beforePress);
+    expect(controller.state.slots[0]).toMatchObject({ sessionId: SESSION_IDS[0], lifecycle: SESSION_STATUS.COMPLETED, acknowledged: false });
+    expect(controller.state.retiredSessions).toEqual([]);
+    expect(imageFor(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.BLUE));
   });
 
   it("contains unavailable navigation without acknowledging or exposing process details, and ignores unassigned presses", async () => {
@@ -323,16 +364,32 @@ describe("session slot Stream Deck integration", () => {
     expect(okError).not.toHaveBeenCalled();
   });
 
-  it("does not let a delayed missing result mutate a restarted same-value assignment", async () => {
-    let resolveNavigation: ((outcome: typeof NAVIGATION_OUTCOME.MISSING) => void) | undefined;
+  it("keeps a returned unavailable navigation outcome non-destructive", async () => {
+    const logger = vi.fn(); const controller = controllerWith({ navigate: vi.fn().mockResolvedValue(NAVIGATION_OUTCOME.UNAVAILABLE) }, logger); const action = new SessionSlotActionBase(controller, () => 2); const first = key("first", 0);
+    await action.onWillAppear(appear(first));
+    await controller.handleStatusEvent(status(), 1);
+    await controller.handleStatusEvent(status({ eventId: "de305d54-75b4-431b-adb2-eb6b9e546002", lifecycle: SESSION_STATUS.COMPLETED, timestamp: 2 }), 2);
+    const beforePress = controller.state;
+
+    await action.onKeyDown({ action: first as unknown as KeyAction } as KeyDownEvent);
+
+    expect(controller.state).toBe(beforePress);
+    expect(imageFor(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.BLUE));
+    expect(logger).toHaveBeenCalledWith(SESSION_SLOT_NAVIGATION_ERROR);
+  });
+
+  it("does not let a delayed successful result mutate a restarted same-value assignment", async () => {
+    let resolveNavigation: ((outcome: typeof NAVIGATION_OUTCOME.NAVIGATED) => void) | undefined;
     const navigate = vi.fn<AssignedTargetNavigator["navigate"]>().mockImplementation(() => new Promise((resolve) => { resolveNavigation = resolve; })); const controller = controllerWith({ navigate }); const action = new SessionSlotActionBase(controller, () => 2); const first = key("first", 0);
     await action.onWillAppear(appear(first));
     await controller.handleStatusEvent(status({ tmuxPaneId: "%1" }), 1);
     const press = action.onKeyDown({ action: first as unknown as KeyAction } as KeyDownEvent);
     await controller.handleStatusEvent(status({ eventId: "de305d54-75b4-431b-adb2-eb6b9e546002", lifecycle: SESSION_STATUS.PANE_DISAPPEARED, tmuxPaneId: "%1", timestamp: 2 }), 2);
     await controller.handleStatusEvent(status({ eventId: "de305d54-75b4-431b-adb2-eb6b9e546003", lifecycle: SESSION_STATUS.STARTED, tmuxPaneId: "%1", timestamp: 3 }), 3);
-    if (resolveNavigation === undefined) throw new Error("Expected navigation to begin."); resolveNavigation(NAVIGATION_OUTCOME.MISSING); await press;
+    await controller.handleStatusEvent(status({ eventId: "de305d54-75b4-431b-adb2-eb6b9e546004", lifecycle: SESSION_STATUS.COMPLETED, tmuxPaneId: "%1", timestamp: 4 }), 4);
+    if (resolveNavigation === undefined) throw new Error("Expected navigation to begin."); resolveNavigation(NAVIGATION_OUTCOME.NAVIGATED); await press;
     expect(controller.state.slots[0]?.sessionId).toBe(SESSION_IDS[0]);
-    expect(imageFor(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.AMBER));
+    expect(controller.state.slots[0]?.acknowledged).toBe(false);
+    expect(imageFor(first)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.BLUE));
   });
 });

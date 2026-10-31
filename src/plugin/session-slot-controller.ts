@@ -331,31 +331,20 @@ export class SessionSlotController {
     // A normal outcome is a permanent record, not a failure: it stays at info
     // so error remains reserved for actual navigation failures.
     try { this.options.logger.info(navigationOutcomeMessage(outcome, target)); } catch { /* observability must never break navigation */ }
-    if (outcome === NAVIGATION_OUTCOME.UNAVAILABLE || outcome === NAVIGATION_OUTCOME.AMBIGUOUS) {
-      // Both abort before a single tmux command runs. Acknowledging here would
-      // tell the user they have seen a response they were never shown.
-      this.#logNavigationFailure();
+    if (outcome !== NAVIGATION_OUTCOME.NAVIGATED) {
+      // A navigation probe is not authoritative lifecycle or read evidence.
+      if (outcome === NAVIGATION_OUTCOME.UNAVAILABLE || outcome === NAVIGATION_OUTCOME.AMBIGUOUS) this.#logNavigationFailure();
       return;
     }
     if (!this.#matchesCurrentAssignment(visible.slotIndex, sessionId, target, assignmentId)) return;
     const prevState = this.#state;
-    if (outcome === NAVIGATION_OUTCOME.MISSING) {
-      // One lookup that failed to find the pane frees the key, but keeps the
-      // session: only the startup reconciliation, which enumerates every pane,
-      // knows enough to retire one.
-      this.#state = reduceSessionState(this.#state, {
-        kind: SESSION_REDUCER_ACTION.CLEAR_SLOT,
-        slotIndex: visible.slotIndex,
-      });
-    } else {
-      this.#state = reduceSessionState(this.#state, {
-        kind: SESSION_REDUCER_ACTION.PHYSICAL_KEY_DOWN,
-        slotIndex: visible.slotIndex,
-        sessionId,
-        target,
-        assignmentId,
-      });
-    }
+    this.#state = reduceSessionState(this.#state, {
+      kind: SESSION_REDUCER_ACTION.PHYSICAL_KEY_DOWN,
+      slotIndex: visible.slotIndex,
+      sessionId,
+      target,
+      assignmentId,
+    });
     await this.refresh(now);
     this.#notifyStateChanged(prevState);
   }
