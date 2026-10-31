@@ -5,6 +5,9 @@ import type { LocalAgentTargetMetadata } from "../core/types";
 export const NAVIGATION_OUTCOME = { NAVIGATED: "navigated", AMBIGUOUS: "ambiguous", MISSING: "missing", UNAVAILABLE: "unavailable" } as const;
 export const NAVIGATION_PROCESS_LIMITS = { TIMEOUT_MS: 200, MAX_OUTPUT_BYTES: 16 * 1024 } as const;
 export const NAVIGATION_TERMINATION_LIMITS = { GRACE_MS: 50 } as const;
+// tmux prints control characters, tabs included, as "_" to a client that is not inside tmux
+// (the plugin runs without TMUX), so fields are split on a printable separator instead.
+const FIELD_SEPARATOR = "|";
 const GHOSTTY_BUNDLE_ID = "com.mitchellh.ghostty"; const TMUX_PANE_PATTERN = /^%\d+$/; const TMUX_SESSION_PATTERN = /^\$\d+$/; const TMUX_WINDOW_PATTERN = /^@\d+$/;
 export type NavigationOutcome = (typeof NAVIGATION_OUTCOME)[keyof typeof NAVIGATION_OUTCOME];
 export interface NavigationProcessResult { readonly stdout: string; }
@@ -56,7 +59,7 @@ export function createBoundedNavigationProcess(options: { readonly launcher: Nav
 const productionNavigationProcess = createBoundedNavigationProcess();
 function isSafeTarget(target: LocalAgentTargetMetadata): boolean { return TMUX_PANE_PATTERN.test(target.tmuxPaneId) && TMUX_SESSION_PATTERN.test(target.tmuxSession) && (target.tmuxWindow === undefined || TMUX_WINDOW_PATTERN.test(target.tmuxWindow)) && target.ghosttyBundleId === GHOSTTY_BUNDLE_ID; }
 // Printable separators survive tmux formatting for GUI clients without TMUX.
-function rows(stdout: string): readonly (readonly string[])[] { return stdout.split("\n").filter((line) => line.length > 0).map((line) => line.split("|")); }
+function rows(stdout: string): readonly (readonly string[])[] { return stdout.split("\n").filter((line) => line.length > 0).map((line) => line.split(FIELD_SEPARATOR)); }
 export const PANE_ENUMERATION_STATUS = { TRUSTED: "trusted", UNTRUSTED: "untrusted" } as const;
 export type PaneEnumerationStatus = (typeof PANE_ENUMERATION_STATUS)[keyof typeof PANE_ENUMERATION_STATUS];
 interface TrustedPaneEnumeration { readonly status: typeof PANE_ENUMERATION_STATUS.TRUSTED; readonly rows: readonly (readonly string[])[]; }
@@ -80,7 +83,7 @@ export function createGhosttyTmuxNavigator(options: GhosttyTmuxNavigatorOptions 
       if (!isSafeTarget(target)) return NAVIGATION_OUTCOME.UNAVAILABLE;
       let paneOutput: string; try {
         await options.process.execute("tmux", ["has-session", "-t", target.tmuxSession]);
-        paneOutput = (await options.process.execute("tmux", ["list-panes", "-a", "-F", "#{pane_id}|#{session_id}|#{window_id}"])).stdout;
+        paneOutput = (await options.process.execute("tmux", ["list-panes", "-a", "-F", `#{pane_id}${FIELD_SEPARATOR}#{session_id}${FIELD_SEPARATOR}#{window_id}`])).stdout;
       } catch {
         return NAVIGATION_OUTCOME.UNAVAILABLE;
       }
@@ -90,7 +93,7 @@ export function createGhosttyTmuxNavigator(options: GhosttyTmuxNavigatorOptions 
       const windowId = paneRow?.[2];
       if (paneRow === undefined || windowId === undefined) return NAVIGATION_OUTCOME.MISSING;
       let clients: readonly string[]; try {
-        clients = targetableClients((await options.process.execute("tmux", ["list-clients", "-F", "#{client_tty}|#{session_id}"])).stdout, target);
+        clients = targetableClients((await options.process.execute("tmux", ["list-clients", "-F", `#{client_tty}${FIELD_SEPARATOR}#{session_id}`])).stdout, target);
       } catch {
         return NAVIGATION_OUTCOME.UNAVAILABLE;
       }

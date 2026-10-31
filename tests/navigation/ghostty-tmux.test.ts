@@ -72,4 +72,11 @@ describe("Ghostty tmux navigator", () => {
     expect(launch).toHaveBeenCalledWith("tmux", [], NAVIGATION_PROCESS_LIMITS.MAX_OUTPUT_BYTES);
     expect(kill).toHaveBeenNthCalledWith(1, "SIGTERM"); expect(kill).toHaveBeenNthCalledWith(2, "SIGKILL"); expect(timer.cancel).toHaveBeenCalled();
   });
+  it("asks tmux for printable-delimited fields, since tmux turns control characters into underscores for a client outside tmux", async () => {
+    const process = processFor(["", "%1|$0|@1\n", "/dev/ttys001|$0\n", "", "", "", ""]);
+    await createGhosttyTmuxNavigator({ process }).navigate(target);
+    const formats = process.execute.mock.calls.filter(([, args]) => args[0] === "list-panes" || args[0] === "list-clients").map(([, args]) => args.at(-1) ?? "");
+    expect(formats).toHaveLength(2);
+    for (const format of formats) expect(format).not.toMatch(/[\x00-\x1f\x7f]/);
+  });
 });
