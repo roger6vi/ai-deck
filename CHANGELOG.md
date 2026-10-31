@@ -5,6 +5,11 @@
 ### Changes
 
 - Pins the SDK utilities' Zod dependency to 4.6.6 for GHSA-mrhx-c7xc-m3w5 while keeping Stream Deck SDK 2.1.0; public RPC validation and SDK compatibility are regression-tested.
+- Discovers live tmux panes at startup and every five seconds, showing idle presence without requiring a particular terminal agent.
+- Keeps keys and unread state unchanged when navigation does not succeed, and uses printable tmux fields without weakening malformed-output validation.
+- Focuses the navigated Ghostty terminal by tty; older Ghostty versions only fall back when exactly one terminal exists.
+- Adds three-line pane names in the property inspector while preserving visible session choices, unassigned sessions, and literal window-name fallbacks.
+- Darkens green and amber key backgrounds for readable white titles.
 - Uses the owner's canonical Stream Deck identity `roger6vi.ai-deck` (action `roger6vi.ai-deck.session-slot`) and the `roger6vi.ai-deck.sdPlugin` directory. This replaces the published `io.github.roger6vi.ai-deck` identity and the pre-release `com.gentleman.ai-deck` identity; the visible product name remains AI Deck.
 - Adds `npm run migrate:profile` to migrate explicitly supplied exported `.streamDeckProfile` archives from either previous identity. It never edits the source export, installs or imports a profile, or touches Stream Deck application-support data.
 
