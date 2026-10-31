@@ -41,6 +41,7 @@ const ASSET_JSON_BYTES = new TextEncoder().encode(
 const SLOT_ACTION_ID = "d5cad140-85d7-5950-8a0f-006f806eec78";
 const NESTED_ACTION_ID = "c0689340-dd29-557b-8fb9-69960a2cfc64";
 const OTHER_PLUGIN_UUID = "com.elgato.streamdeck.system.open";
+const OTHER_PLUGIN_METADATA_UUID = "com.elgato.streamdeck.system";
 const MULTI_ACTION_UUID = "com.elgato.streamdeck.multiactions.routine2";
 const USER_SETTINGS = {
   command: `echo ${CURRENT_ACTION_UUID}`,
@@ -203,6 +204,77 @@ function rawPageManifestText(pluginUuid: string): string {
   "Icon": "",
   "Name": ""
 }`;
+}
+
+function pluginMetadata(pluginUuid: string) {
+  return { Name: "AI Deck", UUID: pluginUuid, Version: "0.1.0.0" };
+}
+
+/** Mirrors an action as installed by Stream Deck, including Plugin/Resources metadata. */
+function installedPageManifest(pluginUuid: string) {
+  return {
+    Controllers: [
+      {
+        Actions: {
+          "0,0": {
+            ActionID: "existing-instance",
+            LinkedTitle: true,
+            Name: "Reserved Session Slot",
+            Plugin: pluginMetadata(pluginUuid),
+            Resources: { CustomImage: "custom-image-key", Extra: { depth: 2 } },
+            Settings: USER_SETTINGS,
+            State: 0,
+            States: [{ ShowTitle: true, Title: "Reserved Slot 1" }],
+            UUID: `${pluginUuid}.session-slot`,
+          },
+          "1,0": {
+            ActionID: "other-plugin-instance",
+            LinkedTitle: true,
+            Name: "Open",
+            Plugin: { Name: "System", UUID: OTHER_PLUGIN_METADATA_UUID, Version: "2.1.0.0" },
+            Resources: {},
+            Settings: {
+              Plugin: { Name: "decoy", UUID: "io.github.roger6vi.ai-deck" },
+              UUID: pluginUuid,
+            },
+            State: 0,
+            States: [{ ShowTitle: true, Title: "Open" }],
+            UUID: OTHER_PLUGIN_UUID,
+          },
+          "2,0": {
+            ActionID: "multi-instance",
+            LinkedTitle: true,
+            Name: "Multi Action",
+            Plugin: { Name: "Multi Actions", UUID: MULTI_ACTION_UUID, Version: "2.0.0.0" },
+            Resources: {},
+            Settings: {
+              Routine: {
+                Actions: [
+                  {
+                    ActionID: NESTED_ACTION_ID,
+                    LinkedTitle: true,
+                    Name: "Reserved Session Slot",
+                    Plugin: pluginMetadata(pluginUuid),
+                    Resources: {},
+                    Settings: {},
+                    State: 0,
+                    States: [{ ShowTitle: true, Title: "Reserved Slot 1" }],
+                    UUID: `${pluginUuid}.session-slot`,
+                  },
+                ],
+              },
+            },
+            State: 0,
+            States: [{ ShowTitle: true, Title: "Multi Action" }],
+            UUID: MULTI_ACTION_UUID,
+          },
+        },
+        Type: "Keypad",
+      },
+    ],
+    Icon: "",
+    Name: "",
+  };
 }
 
 async function fixtureDirectory(): Promise<string> {
@@ -416,6 +488,46 @@ describe("exported profile identity migration", () => {
     expect(result.code).not.toBe(0);
     expect(result.stderr).not.toBe("");
     await expect(readFile(output)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("migrates only genuine action Plugin metadata installed by Stream Deck", async () => {
+    const directory = await fixtureDirectory();
+    const input = join(directory, "installed.streamDeckProfile");
+    const output = join(directory, "installed-migrated.streamDeckProfile");
+    const original = installedPageManifest("com.gentleman.ai-deck");
+    await writeArchive(input, [
+      { data: new TextEncoder().encode(JSON.stringify(rootManifest())), name: ROOT_ENTRY },
+      { data: new TextEncoder().encode(JSON.stringify(original)), name: PAGE_ENTRY },
+    ]);
+    const inputBefore = await readFile(input);
+
+    const result = await runCli(["--input", input, "--output", output]);
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    // Plugin.UUID rides with its action; a migrated action is counted once.
+    expect(result.stdout).toBe(
+      `ai-deck: migrated 2 action reference(s) to roger6vi.ai-deck.\nai-deck: wrote ${output}\n`,
+    );
+    expect(await readFile(input)).toEqual(inputBefore);
+
+    const page = parseJson(await readArchive(output), PAGE_ENTRY) as any;
+    const actions = page.Controllers[0].Actions;
+    expect(actions["0,0"].UUID).toBe(CURRENT_ACTION_UUID);
+    expect(actions["0,0"].Plugin).toEqual(pluginMetadata(CURRENT_PLUGIN_UUID));
+    expect(actions["0,0"].ActionID).toBe("existing-instance");
+    const originalActions = original.Controllers[0]?.Actions;
+    if (!originalActions) throw new Error("Fixture must contain one controller with actions.");
+    expect(actions["0,0"].Resources).toEqual(originalActions["0,0"].Resources);
+    expect(actions["0,0"].States).toEqual(originalActions["0,0"].States);
+    expect(actions["0,0"].Settings).toEqual(USER_SETTINGS);
+    expect(actions["1,0"]).toEqual(originalActions["1,0"]);
+    expect(actions["1,0"].Plugin.UUID).toBe(OTHER_PLUGIN_METADATA_UUID);
+    expect(actions["1,0"].Settings.Plugin.UUID).toBe("io.github.roger6vi.ai-deck");
+    expect(actions["2,0"].Plugin).toEqual(originalActions["2,0"].Plugin);
+    expect(actions["2,0"].Settings.Routine.Actions[0].UUID).toBe(CURRENT_ACTION_UUID);
+    expect(actions["2,0"].Settings.Routine.Actions[0].Plugin).toEqual(pluginMetadata(CURRENT_PLUGIN_UUID));
+    expect(actions["2,0"].Settings.Routine.Actions[0].ActionID).toBe(NESTED_ACTION_ID);
   });
 
   it("documents usage with --help and rejects missing arguments", async () => {

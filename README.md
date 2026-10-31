@@ -59,9 +59,11 @@ What the migration does and does not do:
   It refuses the same path, an existing output, and any non-`.streamDeckProfile`
   argument, and it validates the whole input before writing.
 - It rewrites only action UUID fields inside the profile's action containers
-  (`Controllers[].Actions` and recognized multi-action routine lists). Action
-  instance IDs, unrelated settings, titles, and assets are preserved; settings
-  values that merely look like an identity are never rewritten.
+  (`Controllers[].Actions` and recognized multi-action routine lists), together
+  with the `Plugin.UUID` metadata attached to those genuine actions. Action
+  instance IDs, `Plugin.Name`, `Plugin.Version`, `Resources`, unrelated
+  settings, titles, and assets are preserved; settings values that merely look
+  like an identity are never rewritten.
 - Only the root and per-page profile `manifest.json` files are parsed, and every
   other entry keeps its exact bytes (including an `assets/manifest.json`).
   Numeric tokens such as large integers, `-0`, and exponent spelling survive

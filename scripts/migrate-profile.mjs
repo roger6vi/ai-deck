@@ -39,10 +39,11 @@ Migrate an exported Stream Deck profile from a previous AI Deck plugin identity
   --output <path>  New .streamDeckProfile archive to write. Must not exist yet.
   --help, -h       Show this help and exit.
 
-The command rewrites only action UUID fields that exactly match a previous AI
-Deck identity. Action instance IDs, unrelated settings, titles and assets are
-preserved. Import the migrated profile with Stream Deck's "Import Profile...";
-export and back up your current profiles first.`;
+The command rewrites only action UUID fields and the Plugin.UUID metadata of
+genuine actions that exactly match a previous AI Deck identity. Action instance
+IDs, other plugin metadata, unrelated settings, titles and assets are preserved.
+Import the migrated profile with Stream Deck's "Import Profile..."; export and
+back up your current profiles first.`;
 
 function usageError(message) {
   const error = new Error(message);
@@ -131,13 +132,22 @@ function isProfileManifestEntry(filename, root) {
  */
 function migrateActionNode(action, counter) {
   if (!isPlainObject(action)) return;
+  let migrated = false;
   if (typeof action.UUID === "string") {
-    const migrated = migrateIdentity(action.UUID);
-    if (migrated !== action.UUID) {
-      action.UUID = migrated;
-      counter.count += 1;
+    const identity = migrateIdentity(action.UUID);
+    if (identity !== action.UUID) {
+      action.UUID = identity;
+      migrated = true;
     }
   }
+  // Action nodes carry the owning plugin identity next to the action UUID.
+  const plugin = action.Plugin;
+  if (isPlainObject(plugin) && typeof plugin.UUID === "string" && PREVIOUS_PLUGIN_UUIDS.includes(plugin.UUID)) {
+    plugin.UUID = CURRENT_PLUGIN_UUID;
+    migrated = true;
+  }
+  // One migrated action is one reported reference, whatever fields it carried.
+  if (migrated) counter.count += 1;
   // Nested actions exist only inside a recognized multi-action routine.
   if (typeof action.UUID !== "string" || !action.UUID.startsWith(MULTI_ACTION_UUID_PREFIX)) return;
   const settings = action.Settings;

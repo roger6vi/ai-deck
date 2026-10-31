@@ -6,6 +6,7 @@ node_modules/
 coverage/
 dist/*
 .package-stage/
+.local/
 logs/
 *.tsbuildinfo
 roger6vi.ai-deck.sdPlugin/bin/
