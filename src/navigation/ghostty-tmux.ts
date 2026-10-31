@@ -4,6 +4,8 @@ import { join } from "node:path";
 import type { LocalAgentTargetMetadata } from "../core/types";
 export const NAVIGATION_OUTCOME = { NAVIGATED: "navigated", AMBIGUOUS: "ambiguous", MISSING: "missing", UNAVAILABLE: "unavailable" } as const;
 export const NAVIGATION_PROCESS_LIMITS = { TIMEOUT_MS: 200, MAX_OUTPUT_BYTES: 16 * 1024 } as const;
+// osascript starts slower than tmux/open, and the first call can wait on the macOS Automation prompt.
+export const FOCUS_PROCESS_LIMITS = { TIMEOUT_MS: 2000 } as const;
 export const NAVIGATION_TERMINATION_LIMITS = { GRACE_MS: 50 } as const;
 // tmux prints control characters, tabs included, as "_" to a client that is not inside tmux
 // (the plugin runs without TMUX), so fields are split on a printable separator instead.
@@ -17,7 +19,29 @@ export interface NavigationExecution { readonly child: NavigationChild; readonly
 export interface NavigationLauncher { launch(command: string, args: readonly string[], maxOutputBytes: number): NavigationExecution; }
 export interface NavigationTimer { schedule(callback: () => void, delayMs: number): unknown; cancel(handle: unknown): void; }
 export interface AssignedTargetNavigator { navigate(target: LocalAgentTargetMetadata): Promise<NavigationOutcome>; }
-export interface GhosttyTmuxNavigatorOptions { readonly process: NavigationProcess; }
+export interface GhosttyTmuxNavigatorOptions { readonly process: NavigationProcess; readonly focusProcess?: NavigationProcess; }
+/**
+ * `open -b` raises Ghostty but does not give a terminal keyboard focus. Ghostty's
+ * AppleScript `focus` does, and each terminal exposes the tty that tmux reports
+ * as its client, so the terminal hosting the tmux client is matched exactly.
+ * The tty is passed as an argument, never spliced into the script.
+ */
+export const GHOSTTY_FOCUS_SCRIPT: readonly string[] = [
+  "-e", "on run argv",
+  "-e", "set ttyPath to item 1 of argv",
+  "-e", `tell application id "${GHOSTTY_BUNDLE_ID}"`,
+  "-e", "try",
+  "-e", "set targetTerminal to first terminal whose tty is ttyPath",
+  "-e", "on error errorMessage number errorNumber",
+  // Ghostty 1.3 lacks tty. Never guess among multiple terminals on that version.
+  "-e", "if errorNumber is not -2753 then return",
+  "-e", "if (count of terminals) is not 1 then return",
+  "-e", "set targetTerminal to first terminal",
+  "-e", "end try",
+  "-e", "focus targetTerminal",
+  "-e", "end tell",
+  "-e", "end run",
+];
 /**
  * The Stream Deck app launches the plugin with the macOS GUI PATH
  * (`/usr/bin:/bin:/usr/sbin:/sbin`), which has no Homebrew in it. Resolving
@@ -45,18 +69,19 @@ const productionLauncher: NavigationLauncher = { launch(rawCommand, args, maxOut
   child = execFile(command, args, { encoding: "utf8", maxBuffer: maxOutputBytes, shell: false }, (error, stdout) => { if (error === null) resolve({ stdout }); else reject(); });
   return { child: { kill: (signal) => { child.kill(signal); } }, result };
 } };
-export function createBoundedNavigationProcess(options: { readonly launcher: NavigationLauncher; readonly timer: NavigationTimer } = { launcher: productionLauncher, timer: { schedule: (callback, delayMs) => setTimeout(callback, delayMs), cancel: clearTimeout } }): NavigationProcess {
+export function createBoundedNavigationProcess(options: { readonly launcher: NavigationLauncher; readonly timer: NavigationTimer; readonly timeoutMs?: number } = { launcher: productionLauncher, timer: { schedule: (callback, delayMs) => setTimeout(callback, delayMs), cancel: clearTimeout } }): NavigationProcess {
   return { execute(command, args) {
     const execution = options.launcher.launch(command, args, NAVIGATION_PROCESS_LIMITS.MAX_OUTPUT_BYTES);
     return new Promise((resolve, reject) => {
       let settled = false; let killTimer: unknown; let terminateTimer: unknown;
       const finish = (result?: NavigationProcessResult) => { if (settled) return; settled = true; options.timer.cancel(terminateTimer); if (killTimer !== undefined) options.timer.cancel(killTimer); result === undefined ? reject(new Error("Navigation process unavailable.")) : resolve(result); };
-      terminateTimer = options.timer.schedule(() => { execution.child.kill("SIGTERM"); killTimer = options.timer.schedule(() => { execution.child.kill("SIGKILL"); finish(); }, NAVIGATION_TERMINATION_LIMITS.GRACE_MS); }, NAVIGATION_PROCESS_LIMITS.TIMEOUT_MS);
+      terminateTimer = options.timer.schedule(() => { execution.child.kill("SIGTERM"); killTimer = options.timer.schedule(() => { execution.child.kill("SIGKILL"); finish(); }, NAVIGATION_TERMINATION_LIMITS.GRACE_MS); }, options.timeoutMs ?? NAVIGATION_PROCESS_LIMITS.TIMEOUT_MS);
       void execution.result.then((result) => finish(result), () => finish());
     });
   } };
 }
 const productionNavigationProcess = createBoundedNavigationProcess();
+const productionFocusProcess = createBoundedNavigationProcess({ launcher: productionLauncher, timer: { schedule: (callback, delayMs) => setTimeout(callback, delayMs), cancel: clearTimeout }, timeoutMs: FOCUS_PROCESS_LIMITS.TIMEOUT_MS });
 function isSafeTarget(target: LocalAgentTargetMetadata): boolean { return TMUX_PANE_PATTERN.test(target.tmuxPaneId) && TMUX_SESSION_PATTERN.test(target.tmuxSession) && (target.tmuxWindow === undefined || TMUX_WINDOW_PATTERN.test(target.tmuxWindow)) && target.ghosttyBundleId === GHOSTTY_BUNDLE_ID; }
 // Printable separators survive tmux formatting for GUI clients without TMUX.
 function rows(stdout: string): readonly (readonly string[])[] { return stdout.split("\n").filter((line) => line.length > 0).map((line) => line.split(FIELD_SEPARATOR)); }
@@ -79,7 +104,7 @@ function parsePaneEnumeration(stdout: string): PaneEnumeration {
 }
 function exactPaneRow(enumeration: TrustedPaneEnumeration, target: LocalAgentTargetMetadata): readonly string[] | undefined { return enumeration.rows.find((row) => row[0] === target.tmuxPaneId && row[1] === target.tmuxSession && (target.tmuxWindow === undefined || row[2] === target.tmuxWindow)); }
 function targetableClients(stdout: string, target: LocalAgentTargetMetadata): readonly string[] { return rows(stdout).filter((row) => row.length === 2 && row.every((field) => !/[\x00-\x1f\x7f]/.test(field)) && /^\/dev\/[A-Za-z0-9._-]+$/.test(row[0] ?? "") && row[1] === target.tmuxSession).map(([tty]) => tty ?? ""); }
-export function createGhosttyTmuxNavigator(options: GhosttyTmuxNavigatorOptions = { process: productionNavigationProcess }): AssignedTargetNavigator { return { async navigate(target): Promise<NavigationOutcome> {
+export function createGhosttyTmuxNavigator(options: GhosttyTmuxNavigatorOptions = { process: productionNavigationProcess, focusProcess: productionFocusProcess }): AssignedTargetNavigator { return { async navigate(target): Promise<NavigationOutcome> {
       if (!isSafeTarget(target)) return NAVIGATION_OUTCOME.UNAVAILABLE;
       let paneOutput: string; try {
         await options.process.execute("tmux", ["has-session", "-t", target.tmuxSession]);
@@ -106,6 +131,8 @@ export function createGhosttyTmuxNavigator(options: GhosttyTmuxNavigatorOptions 
       } catch {
         return NAVIGATION_OUTCOME.UNAVAILABLE;
       }
+      // Best effort: without Automation permission the window is still raised and the pane selected.
+      try { await options.focusProcess?.execute("osascript", [...GHOSTTY_FOCUS_SCRIPT, client]); } catch { /* keep the navigation result */ }
       return NAVIGATION_OUTCOME.NAVIGATED;
     } }; }
 export const ghosttyTmuxNavigator = createGhosttyTmuxNavigator();

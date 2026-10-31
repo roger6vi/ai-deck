@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { NAVIGATION_OUTCOME, NAVIGATION_PROCESS_LIMITS, createBoundedNavigationProcess, createGhosttyTmuxNavigator, type NavigationLauncher, type NavigationProcessResult, type NavigationTimer } from "../../src/navigation/ghostty-tmux";
+import { FOCUS_PROCESS_LIMITS, GHOSTTY_FOCUS_SCRIPT, NAVIGATION_OUTCOME, NAVIGATION_PROCESS_LIMITS, createBoundedNavigationProcess, createGhosttyTmuxNavigator, type NavigationLauncher, type NavigationProcessResult, type NavigationTimer } from "../../src/navigation/ghostty-tmux";
 const target = { tmuxPaneId: "%1", tmuxSession: "$0", ghosttyBundleId: "com.mitchellh.ghostty" } as const;
 function processFor(outputs: readonly string[]) {
   const execute = vi.fn<(command: string, args: readonly string[]) => Promise<{ readonly stdout: string }>>();
@@ -78,5 +78,47 @@ describe("Ghostty tmux navigator", () => {
     const formats = process.execute.mock.calls.filter(([, args]) => args[0] === "list-panes" || args[0] === "list-clients").map(([, args]) => args.at(-1) ?? "");
     expect(formats).toHaveLength(2);
     for (const format of formats) expect(format).not.toMatch(/[\x00-\x1f\x7f]/);
+  });
+  it("focuses the Ghostty terminal that hosts the tmux client once the pane is selected", async () => {
+    const process = processFor(["", "%1|$0|@1\n", "/dev/ttys001|$0\n", "", "", "", ""]);
+    const focusProcess = processFor([""]);
+    const outcome = await createGhosttyTmuxNavigator({ process, focusProcess }).navigate(target);
+    expect(outcome).toBe(NAVIGATION_OUTCOME.NAVIGATED);
+    expect(process.execute).toHaveBeenCalledTimes(7);
+    expect(focusProcess.execute).toHaveBeenCalledExactlyOnceWith("osascript", [...GHOSTTY_FOCUS_SCRIPT, "/dev/ttys001"]);
+  });
+  it("passes the tty as an argument and never inside the script", () => {
+    expect(GHOSTTY_FOCUS_SCRIPT.join("\n")).not.toContain("/dev/");
+    expect(GHOSTTY_FOCUS_SCRIPT.join("\n")).toContain("item 1 of argv");
+  });
+  it("only falls back on a missing tty property when exactly one Ghostty terminal exists", () => {
+    const script = GHOSTTY_FOCUS_SCRIPT.join("\n");
+    expect(script).toContain("if errorNumber is not -2753 then return");
+    expect(script).toContain("if (count of terminals) is not 1 then return");
+    expect(script.indexOf("if (count of terminals) is not 1 then return")).toBeLessThan(script.indexOf("set targetTerminal to first terminal\n"));
+  });
+  it("still reports navigated when the focus call fails", async () => {
+    const process = processFor(["", "%1|$0|@1\n", "/dev/ttys001|$0\n", "", "", "", ""]);
+    const focusProcess = { execute: vi.fn().mockRejectedValue(new Error("Automation denied")) };
+    expect(await createGhosttyTmuxNavigator({ process, focusProcess }).navigate(target)).toBe(NAVIGATION_OUTCOME.NAVIGATED);
+    expect(focusProcess.execute).toHaveBeenCalledTimes(1);
+  });
+  it("never focuses when navigation does not succeed", async () => {
+    const missing = { process: processFor(["", ""]), focusProcess: processFor([]) };
+    expect(await createGhosttyTmuxNavigator(missing).navigate(target)).toBe(NAVIGATION_OUTCOME.MISSING);
+    const ambiguous = { process: processFor(["", "%1|$0|@1\n", ""]), focusProcess: processFor([]) };
+    expect(await createGhosttyTmuxNavigator(ambiguous).navigate(target)).toBe(NAVIGATION_OUTCOME.AMBIGUOUS);
+    const failing = { process: { execute: vi.fn().mockRejectedValue(new Error("down")) }, focusProcess: processFor([]) };
+    expect(await createGhosttyTmuxNavigator(failing).navigate(target)).toBe(NAVIGATION_OUTCOME.UNAVAILABLE);
+    expect(missing.focusProcess.execute).not.toHaveBeenCalled();
+    expect(ambiguous.focusProcess.execute).not.toHaveBeenCalled();
+    expect(failing.focusProcess.execute).not.toHaveBeenCalled();
+  });
+  it("lets a bounded process use its own timeout instead of the default", () => {
+    const delays: number[] = []; const launch = vi.fn<NavigationLauncher["launch"]>().mockReturnValue({ child: { kill: () => undefined }, result: new Promise<NavigationProcessResult>(() => undefined) });
+    const timer: NavigationTimer = { schedule: (_callback, delayMs) => { delays.push(delayMs); return delayMs; }, cancel: vi.fn() };
+    void createBoundedNavigationProcess({ launcher: { launch }, timer, timeoutMs: FOCUS_PROCESS_LIMITS.TIMEOUT_MS }).execute("osascript", []).catch(() => undefined);
+    void createBoundedNavigationProcess({ launcher: { launch }, timer }).execute("tmux", []).catch(() => undefined);
+    expect(delays).toEqual([FOCUS_PROCESS_LIMITS.TIMEOUT_MS, NAVIGATION_PROCESS_LIMITS.TIMEOUT_MS]);
   });
 });

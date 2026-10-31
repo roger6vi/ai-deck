@@ -185,7 +185,11 @@ keeps existing presence unchanged. Discovery stops when the plugin stops.
 Physical key presses acknowledge a session only after successful navigation.
 Missing, ambiguous, or unavailable navigation leaves assignment and unread state
 unchanged; authoritative lifecycle evidence and startup reconciliation handle
-missing panes.
+missing panes. After a successful navigation the plugin also asks Ghostty to
+focus the terminal matching the tmux client's tty. macOS may request Automation
+permission; refusal leaves pane selection and the navigation result intact.
+Ghostty 1.3 does not expose terminal tty metadata: it is focused only when there
+is exactly one terminal; multiple terminals fail safely without guessing.
 Existing profile keys must use `roger6vi.ai-deck.session-slot` and the matching
 `Plugin.UUID`; use the profile migration above for older profiles.
 
