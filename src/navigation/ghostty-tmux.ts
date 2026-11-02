@@ -51,6 +51,16 @@ export const COMMAND_SEARCH_PATHS: readonly string[] = ["/opt/homebrew/bin", "/u
 
 export interface CommandPathDependencies { readonly exists: (path: string) => boolean; readonly env: NodeJS.ProcessEnv; }
 
+/**
+ * The Stream Deck app launches the plugin without a locale, and tmux prints
+ * accented option and window names as "_" to a client it does not believe is
+ * UTF-8. Forcing UTF-8 mode on every tmux invocation keeps names intact no
+ * matter what environment the GUI provided; other commands stay untouched.
+ */
+export function tmuxUtf8Args(command: string, args: readonly string[]): readonly string[] {
+  return command === "tmux" ? ["-u", ...args] : args;
+}
+
 export function resolveCommandPath(command: string, dependencies: CommandPathDependencies = { exists: existsSync, env: process.env }): string {
   if (command.includes("/")) return command;
   const override = dependencies.env[`AI_DECK_${command.toUpperCase()}`];
@@ -66,7 +76,7 @@ const productionLauncher: NavigationLauncher = { launch(rawCommand, args, maxOut
   const command = resolveCommandPath(rawCommand);
   let child: ReturnType<typeof execFile>; let resolve: (result: NavigationProcessResult) => void = () => undefined; let reject: () => void = () => undefined;
   const result = new Promise<NavigationProcessResult>((next, fail) => { resolve = next; reject = () => fail(new Error("Navigation process unavailable.")); });
-  child = execFile(command, args, { encoding: "utf8", maxBuffer: maxOutputBytes, shell: false }, (error, stdout) => { if (error === null) resolve({ stdout }); else reject(); });
+  child = execFile(command, tmuxUtf8Args(rawCommand, args), { encoding: "utf8", maxBuffer: maxOutputBytes, shell: false }, (error, stdout) => { if (error === null) resolve({ stdout }); else reject(); });
   return { child: { kill: (signal) => { child.kill(signal); } }, result };
 } };
 export function createBoundedNavigationProcess(options: { readonly launcher: NavigationLauncher; readonly timer: NavigationTimer; readonly timeoutMs?: number } = { launcher: productionLauncher, timer: { schedule: (callback, delayMs) => setTimeout(callback, delayMs), cancel: clearTimeout } }): NavigationProcess {
