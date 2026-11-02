@@ -7,6 +7,7 @@ import {
   createTmuxPaneNamer,
   createTmuxWindowNameResolver,
   resolveSlotTitles,
+  sanitizePaneName,
   SESSION_SLOT_TITLE_LIMITS,
 } from "../../src/plugin/session-slot-title";
 
@@ -173,5 +174,23 @@ describe("resolveSlotTitles", () => {
 
     expect(titles[0]).toBe("kimi");
     expect(titles[1]).toBe("opencode");
+  });
+});
+
+describe("sanitizePaneName with accented characters", () => {
+  // macOS keyboards emit decomposed text (NFD): "á" is "a" + U+0301.
+  const nfd = (value: string): string => value.normalize("NFD");
+
+  it("counts each accented character as one visible character, not two", () => {
+    expect(sanitizePaneName(nfd("árbolñandúí"))).toBe("árbolñandú");
+  });
+
+  it("never splits a character from its accent at the limit", () => {
+    expect(sanitizePaneName(nfd("aaaaaaaaañ"))).toBe("aaaaaaaaañ");
+  });
+
+  it("stores accented names in composed form so identical names compare equal", () => {
+    expect(sanitizePaneName(nfd("cañón"))).toBe("cañón");
+    expect(sanitizePaneName("cañón")).toBe("cañón");
   });
 });

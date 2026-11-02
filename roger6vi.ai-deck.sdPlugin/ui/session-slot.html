@@ -43,6 +43,20 @@ const nameInput = document.getElementById("name");
 const applyButton = document.getElementById("apply");
 const NAME_MAX_LINES = 3;
 const NAME_MAX_LINE_LENGTH = 10;
+// macOS keyboards emit decomposed text (NFD): one visible accented character
+// is a base character plus a combining mark, so a plain slice counts each
+// accent separately and can split it from its letter. Names are composed to
+// NFC and measured in graphemes (visible characters) instead.
+const graphemeSegmenter = typeof Intl !== "undefined" && typeof Intl.Segmenter === "function"
+  ? new Intl.Segmenter("und", { granularity: "grapheme" })
+  : undefined;
+function limitLine(line) {
+  const composed = line.normalize("NFC");
+  const characters = graphemeSegmenter === undefined
+    ? Array.from(composed)
+    : [...graphemeSegmenter.segment(composed)].map((part) => part.segment);
+  return characters.slice(0, NAME_MAX_LINE_LENGTH).join("");
+}
 let socket;
 let sessions = [];
 let actionInfo;
@@ -133,7 +147,7 @@ window.connectElgatoStreamDeckSocket = function (port, propertyInspectorUUID, re
   };
 };
 nameInput.addEventListener("input", () => {
-  const limited = nameInput.value.split("\n").slice(0, NAME_MAX_LINES).map((line) => line.slice(0, NAME_MAX_LINE_LENGTH)).join("\n");
+  const limited = nameInput.value.split("\n").slice(0, NAME_MAX_LINES).map(limitLine).join("\n");
   if (limited !== nameInput.value) nameInput.value = limited;
 });
 applyButton.addEventListener("click", () => send({ type: "set-slot-name", name: nameInput.value }));
