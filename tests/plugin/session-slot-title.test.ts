@@ -162,9 +162,9 @@ describe("resolveSlotTitles", () => {
     const state = stateWith([["%1", SESSION_ID, 1], ["%7", SESSION_ID_B, 2], ["%9", SESSION_ID_C, 3]]);
     const titles = resolveSlotTitles(state, () => "kimi");
 
-    expect(titles[0]).toBe("kimi\n·%1");
-    expect(titles[1]).toBe("kimi\n·%7");
-    expect(titles[2]).toBe("kimi\n·%9");
+    expect(titles[0]).toBe("kimi\n_%1");
+    expect(titles[1]).toBe("kimi\n_%7");
+    expect(titles[2]).toBe("kimi\n_%9");
   });
 
   it("only groups duplicates by identical resolved names", () => {

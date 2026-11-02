@@ -120,6 +120,6 @@ export function resolveSlotTitles(
     // name it is unreadable at key size.
     if ((occurrences.get(name) ?? 0) < 2) return name;
     const paneId = state.slots[index]?.target?.tmuxPaneId;
-    return paneId === undefined ? name : `${name}\n·${paneId}`;
+    return paneId === undefined ? name : `${name}\n_${paneId}`;
   });
 }
