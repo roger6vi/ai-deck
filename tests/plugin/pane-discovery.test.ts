@@ -20,6 +20,7 @@ interface MockKey {
   readonly id: string;
   readonly coordinates: { readonly column: number; readonly row: number };
   readonly setImage: ReturnType<typeof vi.fn<(image?: string) => Promise<void>>>;
+  readonly setTitle: ReturnType<typeof vi.fn<(title?: string) => Promise<void>>>;
 }
 
 interface Timer {
@@ -74,6 +75,7 @@ function key(id: string, column = 0): MockKey {
     id,
     coordinates: { column, row: 0 },
     setImage: vi.fn<(image?: string) => Promise<void>>().mockResolvedValue(undefined),
+    setTitle: vi.fn<(title?: string) => Promise<void>>().mockResolvedValue(undefined),
   };
 }
 
@@ -175,6 +177,37 @@ describe("session slot baseline pane discovery", () => {
     expect(subject.state.unassignedSessions).toHaveLength(0);
     expect(lastImage(second)).toBe(sessionSlotSvgDataUri(SESSION_SLOT_COLOR.GREEN));
     expect(testFixture.activeTimerCount()).toBe(1);
+  });
+
+  it("picks up tmux window renames on later polls even when no pane appeared or vanished", async () => {
+    const testFixture = fixture();
+    let name = "kimi";
+    const discover = vi.fn<TmuxPaneDiscovery["discover"]>().mockResolvedValue([discovered("%0", 0)]);
+    const resolver = { resolve: vi.fn(async () => name) };
+    const subject = new SessionSlotController({ ...testFixture, paneDiscovery: { discover }, windowNameResolver: resolver });
+    const saved: SessionState[] = [];
+    subject.subscribeToStateChanges(async (state) => { saved.push(state); });
+    const first = key("first", 0);
+    await subject.registerVisibleAction(appear(first));
+
+    await subject.startPaneDiscovery();
+    await settle();
+    expect(first.setTitle).toHaveBeenLastCalledWith("kimi");
+
+    // The pane enumeration is unchanged, but the window was renamed in tmux.
+    name = "renamed";
+    testFixture.setNow(PANE_DISCOVERY_INTERVAL_MS);
+    testFixture.runDue();
+    // The scheduled poll is fired without being awaited; give its full
+    // resolve-names + render chain enough microtasks to settle.
+    await settle();
+    await settle();
+    await settle();
+
+    expect(discover).toHaveBeenCalledTimes(2);
+    expect(first.setTitle).toHaveBeenLastCalledWith("renamed");
+    // An unchanged pane set must not be persisted as a state change.
+    expect(saved).toHaveLength(1);
   });
 
   it("keeps state and rendering unchanged when discovery fails or output is untrusted, and keeps polling", async () => {
