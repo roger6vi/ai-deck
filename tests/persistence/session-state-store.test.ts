@@ -282,3 +282,130 @@ describe("session state store", () => {
     expect(unlinked?.startsWith("/plugin/root/runtime/state.json.")).toBe(true);
   });
 });
+
+describe("legacy OpenCode snapshots", () => {
+  const uuid = (n: number): string => `00000000-0000-4000-8000-${n.toString().padStart(12, "0")}`;
+  const target = (pane: string, session = "$0") => ({ tmuxPaneId: pane, tmuxSession: session, ghosttyBundleId: "com.mitchellh.ghostty" });
+  const legacy = (n: number, pane: string, lifecycle: string = "completed") => ({
+    assignmentId: uuid(n + 100), sessionId: uuid(n), source: "opencode", lifecycle, target: target(pane),
+    runningSince: 5, acknowledged: false, lastEventId: uuid(n + 200), lastTimestamp: 10, lastSequence: 3,
+  });
+  const codex = (n: number, pane: string) => ({
+    assignmentId: uuid(n + 100), sessionId: uuid(n), source: "codex", lifecycle: "running", target: target(pane),
+    lastEventId: uuid(n + 200), lastTimestamp: 10,
+  });
+  function snapshot(slots: readonly (Record<string, unknown> | undefined)[], unassignedSessions: readonly Record<string, unknown>[] = []): string {
+    return JSON.stringify({
+      schemaVersion: 1,
+      slots: Array.from({ length: 5 }, (_, index) => ({ index, ...(slots[index] ?? {}) })),
+      unassignedSessions,
+      retiredSessions: [],
+    });
+  }
+  function codexEvent(sessionN: number, pane: string, timestamp = 1_000): LocalAgentStatusEvent {
+    return baseEvent({ eventId: uuid(sessionN + 300), sessionId: uuid(sessionN), timestamp, target: target(pane) });
+  }
+  function entriesOn(state: SessionState, pane: string) {
+    return [...state.slots, ...state.unassignedSessions].filter((entry) => entry.target?.tmuxPaneId === pane);
+  }
+
+  it("hydrates old snapshots instead of discarding the whole state, keeping schema version 1", () => {
+    const parsed = parseSessionState(snapshot([legacy(1, "%6"), codex(2, "%8")], [legacy(3, "%7")]));
+
+    expect(parsed).toBeDefined();
+    expect(SESSION_STATE_STORE_SCHEMA_VERSION).toBe(1);
+    expect(parsed?.slots[0]).toMatchObject({ sessionId: uuid(1), assignmentId: uuid(101), source: "tmux", lifecycle: SESSION_STATUS.IDLE });
+    expect(parsed?.slots[1]).toMatchObject({ sessionId: uuid(2), source: "codex", lifecycle: "running" });
+    expect(parsed?.unassignedSessions[0]).toMatchObject({ sessionId: uuid(3), assignmentId: uuid(103), source: "tmux", lifecycle: SESSION_STATUS.IDLE });
+  });
+
+  it("keeps the legacy marker persistence-only: it is never held in memory or written back", () => {
+    const parsed = parseSessionState(snapshot([legacy(1, "%6", "running")], [legacy(3, "%7")]))!;
+    const written = serializeSessionState(parsed);
+
+    expect(JSON.stringify(parsed)).not.toContain("opencode");
+    expect(written).not.toContain("opencode");
+    expect(parseSessionState(written)).toEqual(parsed);
+    // Stale OpenCode lifecycle bookkeeping must not outlive the adapter.
+    expect(parsed.slots[0]).not.toHaveProperty("runningSince");
+    expect(parsed.slots[0]).not.toHaveProperty("lastEventId");
+  });
+
+  it("upgrades a legacy keyed entry in place when a supported tool reports on that exact pane", () => {
+    const parsed = parseSessionState(snapshot([legacy(1, "%6")]))!;
+
+    const upgraded = reduceSessionState(parsed, { kind: SESSION_REDUCER_ACTION.EVENT, event: codexEvent(9, "%6") });
+
+    expect(upgraded.slots[0]).toMatchObject({ index: 0, assignmentId: uuid(101), sessionId: uuid(9), source: "codex", lifecycle: SESSION_STATUS.STARTED });
+    expect(entriesOn(upgraded, "%6")).toHaveLength(1);
+    expect(upgraded.unassignedSessions).toHaveLength(0);
+  });
+
+  it("upgrades a parked legacy entry without duplicating it or losing its assignment", () => {
+    const others = [codex(11, "%11"), codex(12, "%12"), codex(13, "%13"), codex(14, "%14"), codex(15, "%15")];
+    const parsed = parseSessionState(snapshot(others, [legacy(3, "%7")]))!;
+
+    const upgraded = reduceSessionState(parsed, { kind: SESSION_REDUCER_ACTION.EVENT, event: codexEvent(9, "%7") });
+
+    expect(upgraded.slots.map((slot) => slot.sessionId)).toEqual(others.map((slot) => slot.sessionId));
+    expect(upgraded.unassignedSessions).toHaveLength(1);
+    expect(upgraded.unassignedSessions[0]).toMatchObject({ assignmentId: uuid(103), sessionId: uuid(9), source: "codex" });
+  });
+
+  it("leaves a legacy entry alone for events on other panes or other tmux sessions", () => {
+    const parsed = parseSessionState(snapshot([legacy(1, "%6")]))!;
+
+    const otherPane = reduceSessionState(parsed, { kind: SESSION_REDUCER_ACTION.EVENT, event: codexEvent(9, "%9") });
+    const otherSession = reduceSessionState(parsed, { kind: SESSION_REDUCER_ACTION.EVENT, event: baseEvent({ sessionId: uuid(8), target: target("%6", "$1") }) });
+
+    expect(otherPane.slots[0]).toEqual(parsed.slots[0]);
+    expect(otherSession.slots[0]).toEqual(parsed.slots[0]);
+  });
+
+  it("does not duplicate the pane when discovery later reports it", () => {
+    const parsed = parseSessionState(snapshot([legacy(1, "%6")], [legacy(3, "%7")]))!;
+
+    const discovered = reduceSessionState(parsed, {
+      kind: SESSION_REDUCER_ACTION.PANE_DISCOVERY,
+      panes: [{ sessionId: uuid(50), target: target("%6") }, { sessionId: uuid(51), target: target("%7") }],
+    });
+
+    expect(entriesOn(discovered, "%6")).toHaveLength(1);
+    expect(entriesOn(discovered, "%7")).toHaveLength(1);
+  });
+
+  it("collapses several legacy generations of one pane into one entry, preferring the keyed one", () => {
+    const parsed = parseSessionState(snapshot([legacy(1, "%6"), legacy(2, "%6")], [legacy(3, "%6"), legacy(4, "%7")]))!;
+
+    expect(entriesOn(parsed, "%6").map((entry) => entry.sessionId)).toEqual([uuid(1)]);
+    expect(entriesOn(parsed, "%7")).toHaveLength(1);
+  });
+
+  it("drops a legacy entry when a supported tool already owns the same pane", () => {
+    const parsed = parseSessionState(snapshot([codex(2, "%6"), legacy(1, "%6")]))!;
+
+    expect(entriesOn(parsed, "%6").map((entry) => entry.sessionId)).toEqual([uuid(2)]);
+    expect(parsed.slots[1]).toEqual({ index: 1 });
+  });
+
+  it("preserves a legacy key when supported session state for its pane was unassigned", () => {
+    const active = codex(2, "%6");
+    const parsed = parseSessionState(snapshot([legacy(1, "%6")], [active, codex(3, "%8")]));
+
+    expect(parsed?.slots[0]).toEqual({ ...active, index: 0, assignmentId: uuid(101) });
+    expect(parsed?.unassignedSessions).toEqual([codex(3, "%8")]);
+  });
+
+  it("discards a legacy entry that names no pane, since nothing could upgrade it", () => {
+    const { target: _target, ...unaddressable } = legacy(1, "%6");
+    const parsed = parseSessionState(snapshot([unaddressable]))!;
+
+    expect(parsed.slots[0]).toEqual({ index: 0 });
+  });
+
+  it("still rejects unknown sources and malformed legacy entries", () => {
+    expect(parseSessionState(snapshot([{ ...legacy(1, "%6"), source: "opencode2" }]))).toBeUndefined();
+    expect(parseSessionState(snapshot([{ ...legacy(1, "%6"), sessionId: "nope" }]))).toBeUndefined();
+    expect(parseSessionState(snapshot([{ ...legacy(1, "%6"), prompt: "x" }]))).toBeUndefined();
+  });
+});

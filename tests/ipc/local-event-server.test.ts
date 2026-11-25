@@ -41,7 +41,7 @@ interface SendOptions {
 
 function event(): Record<string, unknown> {
   return {
-    schemaVersion: LOCAL_AGENT_EVENT_LIMITS.SCHEMA_VERSION, eventId: EVENT_ID, source: "opencode",
+    schemaVersion: LOCAL_AGENT_EVENT_LIMITS.SCHEMA_VERSION, eventId: EVENT_ID, source: "codex",
     sessionId: SESSION_ID, timestamp: 1, lifecycle: SESSION_STATUS.RUNNING,
     target: { tmuxPaneId: "%2", tmuxSession: "$0", ghosttyBundleId: "com.mitchellh.ghostty" },
   };
@@ -168,6 +168,7 @@ describe("local loopback event server", () => {
       const cases = [
         [{ path: "/wrong" }, 404], [{ method: "GET" }, 405], [{ contentType: "text/plain" }, 415],
         [{ body: "{" }, 400], [{ body: JSON.stringify({ ...event(), prompt: SENTINEL }) }, 400],
+        [{ body: JSON.stringify({ ...event(), source: "opencode" }) }, 400],
       ] as const;
       for (const [options, status] of cases) {
         const response = await send(handle, options);

@@ -1,6 +1,5 @@
 export const LOCAL_AGENT_TOOL = {
   CODEX: "codex",
-  OPENCODE: "opencode",
   CLAUDE: "claude",
   PI: "pi",
   /**

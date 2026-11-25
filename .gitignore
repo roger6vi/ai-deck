@@ -14,7 +14,6 @@ roger6vi.ai-deck.sdPlugin/bin.previous/
 roger6vi.ai-deck.sdPlugin/bin.next/
 *.streamDeckPlugin
 !dist/roger6vi.ai-deck.streamDeckPlugin
-!dist/ai-deck-opencode.js
 runtime/
 endpoint.json
 state-snapshot.json

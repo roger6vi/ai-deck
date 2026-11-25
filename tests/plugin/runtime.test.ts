@@ -16,7 +16,7 @@ import {
 const EVENT = {
   schemaVersion: 1,
   eventId: "de305d54-75b4-431b-adb2-eb6b9e546014",
-  source: "opencode",
+  source: "codex",
   sessionId: "123e4567-e89b-42d3-a456-426614174000",
   timestamp: 1,
   lifecycle: SESSION_STATUS.RUNNING,

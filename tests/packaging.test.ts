@@ -19,7 +19,6 @@ const PACKAGE_FILES = [
   "bin/package.json",
   "bin/plugin.js",
   "bin/adapter-emit.js",
-  "bin/opencode-plugin.js",
   "ui/session-slot.html",
   "assets/action.png",
   "assets/action@2x.png",

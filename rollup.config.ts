@@ -16,7 +16,6 @@ const codexHookDirectory = "codex-plugin/hooks";
 const entries = [
   { input: "src/plugin.ts", file: "plugin.js", directory: outputDirectory, packaged: true },
   { input: "src/cli/adapter-emit.ts", file: "adapter-emit.js", directory: outputDirectory, packaged: true },
-  { input: "src/adapters/opencode-plugin.ts", file: "opencode-plugin.js", directory: outputDirectory, packaged: true },
   { input: "src/adapters/claude-hook.ts", file: "claude-hook.mjs", directory: claudeHookDirectory, packaged: false },
   { input: "src/adapters/codex-hook.ts", file: "codex-hook.mjs", directory: codexHookDirectory, packaged: false },
 ] as const;

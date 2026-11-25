@@ -22,6 +22,13 @@ const TMUX_PANE_PATTERN = /^%\d{1,20}$/;
 const TMUX_SESSION_PATTERN = /^\$\d{1,20}$/;
 const TMUX_WINDOW_PATTERN = /^@\d{1,20}$/;
 const GHOSTTY_BUNDLE_ID = "com.mitchellh.ghostty";
+/**
+ * Snapshots written while the OpenCode adapter existed may still carry this
+ * source. It is a persistence-only marker: it is accepted when reading so an
+ * old state file is not discarded wholesale, converted to bare tmux presence
+ * on load, and never held in memory or written back.
+ */
+const LEGACY_RETIRED_SOURCE = "opencode";
 const PERSISTENCE_WRITE_FAILURE = "Session persistence write failed.";
 
 const ENVELOPE_FIELDS = ["schemaVersion", "slots", "unassignedSessions", "retiredSessions"] as const;
@@ -108,7 +115,10 @@ function parseTarget(value: unknown): LocalAgentTargetMetadata | undefined {
 function parseSessionFields(value: Record<string, unknown>, slot: Record<string, unknown>): Record<string, unknown> | undefined {
   if ("assignmentId" in value) { if (!isUuid(value.assignmentId)) return undefined; slot.assignmentId = value.assignmentId; }
   if ("sessionId" in value) { if (!isUuid(value.sessionId)) return undefined; slot.sessionId = value.sessionId; }
-  if ("source" in value) { if (!isTool(value.source)) return undefined; slot.source = value.source; }
+  if ("source" in value) {
+    if (value.source !== LEGACY_RETIRED_SOURCE && !isTool(value.source)) return undefined;
+    slot.source = value.source;
+  }
   if ("lifecycle" in value) { if (!isStatus(value.lifecycle)) return undefined; slot.lifecycle = value.lifecycle; }
   if ("target" in value) { const target = parseTarget(value.target); if (target === undefined) return undefined; slot.target = target; }
   if ("runningSince" in value) { if (!isBoundedInteger(value.runningSince)) return undefined; slot.runningSince = value.runningSince; }
@@ -168,6 +178,72 @@ function sessionRecord(slot: UnassignedSession, record: Record<string, unknown>)
     return record;
 }
 
+function paneIdentity(target: LocalAgentTargetMetadata): string {
+  return `${target.tmuxSession}|${target.tmuxPaneId}`;
+}
+
+function isLegacyEntry(entry: UnassignedSession): boolean {
+  return (entry.source as string | undefined) === LEGACY_RETIRED_SOURCE;
+}
+
+/**
+ * Turns a legacy entry into the bare presence placeholder the reducer already
+ * upgrades in place when a supported tool reports on the same tmux session and
+ * pane, which keeps its key or parking and its assignment. The retired
+ * adapter's lifecycle bookkeeping is stale by definition, so only identity
+ * survives. A pane another entry already holds, or an entry that names no
+ * pane, would only be a duplicate that nothing can upgrade.
+ */
+function legacyPresence(entry: UnassignedSession, claimed: Set<string>):
+  (UnassignedSession & { readonly assignmentId: string; readonly target: LocalAgentTargetMetadata }) | undefined {
+  if (entry.sessionId === undefined || entry.target === undefined) return undefined;
+  const identity = paneIdentity(entry.target);
+  if (claimed.has(identity)) return undefined;
+  claimed.add(identity);
+  return Object.freeze({
+    assignmentId: entry.assignmentId ?? entry.sessionId,
+    sessionId: entry.sessionId,
+    source: LOCAL_AGENT_TOOL.TMUX,
+    lifecycle: SESSION_STATUS.IDLE,
+    target: entry.target,
+  });
+}
+
+function upgradeLegacyEntries(
+  slots: readonly SessionSlot[],
+  unassigned: readonly UnassignedSession[],
+): { readonly slots: readonly SessionSlot[]; readonly unassigned: readonly UnassignedSession[] } {
+  if (![...slots, ...unassigned].some(isLegacyEntry)) return { slots, unassigned };
+  const claimed = new Set<string>();
+  for (const slot of slots) {
+    if (!isLegacyEntry(slot) && slot.target !== undefined) claimed.add(paneIdentity(slot.target));
+  }
+  const supportedUnassigned = new Map<string, UnassignedSession>();
+  for (const entry of unassigned) {
+    if (isLegacyEntry(entry) || entry.target === undefined) continue;
+    const identity = paneIdentity(entry.target);
+    if (!supportedUnassigned.has(identity)) supportedUnassigned.set(identity, entry);
+  }
+  const promoted = new Set<UnassignedSession>();
+  const upgradedSlots = slots.map((slot) => {
+    if (!isLegacyEntry(slot)) return slot;
+    const presence = legacyPresence(slot, claimed);
+    if (presence === undefined) return Object.freeze({ index: slot.index });
+    // Keep the physical assignment, but use any current status for that pane.
+    const current = supportedUnassigned.get(paneIdentity(presence.target));
+    if (current === undefined) return Object.freeze({ ...presence, index: slot.index });
+    promoted.add(current);
+    return Object.freeze({ ...current, index: slot.index, assignmentId: presence.assignmentId });
+  });
+  for (const identity of supportedUnassigned.keys()) claimed.add(identity);
+  const upgradedUnassigned = unassigned.flatMap((entry) => {
+    if (!isLegacyEntry(entry)) return promoted.has(entry) ? [] : [entry];
+    const presence = legacyPresence(entry, claimed);
+    return presence === undefined ? [] : [presence];
+  });
+  return { slots: upgradedSlots, unassigned: upgradedUnassigned };
+}
+
 export function serializeSessionState(state: SessionState): string {
   const slots = state.slots.map((slot) => sessionRecord(slot, { index: slot.index }));
   const unassignedSessions = state.unassignedSessions.map((session) => sessionRecord(session, {}));
@@ -224,9 +300,10 @@ export function parseSessionState(contents: string): SessionState | undefined {
     parsedUnassigned.push(session);
   }
 
+  const upgraded = upgradeLegacyEntries(parsedSlots, parsedUnassigned);
   return Object.freeze({
-    slots: Object.freeze(parsedSlots) as readonly SessionSlot[],
-    unassignedSessions: Object.freeze(parsedUnassigned) as readonly UnassignedSession[],
+    slots: Object.freeze(upgraded.slots) as readonly SessionSlot[],
+    unassignedSessions: Object.freeze(upgraded.unassigned) as readonly UnassignedSession[],
     retiredSessions: Object.freeze(parsedRetired) as readonly RetiredSession[],
   });
 }

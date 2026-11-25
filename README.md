@@ -1,7 +1,7 @@
 # AI Deck
 
 A local-only Stream Deck plugin that surfaces the status of your active
-coding-agent sessions (Gentle Shell, Codex, OpenCode, Claude) as color-coded keys on
+coding-agent sessions (Gentle Shell, Codex, Claude) as color-coded keys on
 the physical device.
 
 - **Local per Mac.** No cloud relay, no cross-machine sync, no telemetry.
@@ -86,33 +86,20 @@ the Stream Deck app. The published `v0.1.0` release predates this identity and
 still ships `io.github.roger6vi.ai-deck.streamDeckPlugin`; export, migrate, and
 back up your profiles before replacing it.
 
-If this Mac uses OpenCode, also download `ai-deck-opencode.js` from the same
-release and install it without a source checkout:
-
-```bash
-mkdir -p "$HOME/.config/opencode/plugins"
-if [ -f "$HOME/.config/opencode/plugins/ai-deck.js" ]; then
-  cp -p "$HOME/.config/opencode/plugins/ai-deck.js" \
-    "$HOME/.config/opencode/plugins/ai-deck.js.backup"
-fi
-install -m 0644 "$HOME/Downloads/ai-deck-opencode.js" \
-  "$HOME/.config/opencode/plugins/ai-deck.js"
-```
-
-Adjust the downloaded file path if your browser saved it elsewhere. The backup
-keeps the previous adapter available for rollback.
-
-To build the same installer and adapter from source instead:
+To build the same installer from source instead:
 
 ```bash
 npm install
 npm run pack
-npm run install:opencode
 ```
 
 `npm run pack` creates `dist/roger6vi.ai-deck.streamDeckPlugin`; it does
 not install the plugin. Open that file and approve it in the Stream Deck app.
-`install:opencode` is only needed on a Mac that runs OpenCode.
+
+OpenCode is no longer supported: the plugin rejects `opencode` events and no
+OpenCode adapter or installer ships. An `ai-deck.js` left in
+`~/.config/opencode/plugins` by an older release is inert for ai-deck and can
+be removed by hand; this repository never touches it.
 
 For development, link the built `.sdPlugin` directory instead of installing
 the packaged artifact:
@@ -122,7 +109,6 @@ npm install
 npm run build
 npm exec -- streamdeck link roger6vi.ai-deck.sdPlugin
 npm run restart:plugin
-npm run install:opencode # only when this Mac runs OpenCode
 ```
 
 `restart:plugin` starts or restarts an existing installation or development
@@ -226,6 +212,12 @@ smoke test.
 
 ### 2026-08-04: disappearing and duplicate OpenCode session keys
 
+*Historical record. OpenCode support has since been retired; the adapter,
+installer, and `opencode` event source described below no longer exist. State
+files written while it existed still load: their OpenCode entries become plain
+tmux presence on the same pane and are taken over in place by the next
+supported tool that reports there.*
+
 **Outcome.** The fix preserves a session key when tmux pane enumeration is not
 trustworthy and represents each OpenCode tmux pane with one stable deck entry
 across root and child sessions.
@@ -272,7 +264,7 @@ below, verify the integration there, and record the rollback evidence.
 
 The plugin listens for authenticated `POST /v1/events` events on the
 loopback endpoint published in `runtime/endpoint.json`. To emit an
-event from any tool wrapper (Codex, OpenCode, Claude, or a custom
+event from any tool wrapper (Codex, Claude, Gentle Shell, or a custom
 shell hook), use the `runAdapterEmit` helper in `src/cli/adapter-emit.ts`.
 
 During development you can invoke it directly:
@@ -301,7 +293,7 @@ script any Node runtime can execute directly:
 ```bash
 AI_DECK_PLUGIN_ROOT=/absolute/path/to/roger6vi.ai-deck.sdPlugin \
   node roger6vi.ai-deck.sdPlugin/bin/adapter-emit.js \
-    --source opencode --session-id "$SESSION_UUID" \
+    --source codex --session-id "$SESSION_UUID" \
     --lifecycle started --pane-id "%1" --session '$0'
 ```
 
@@ -332,28 +324,6 @@ It does nothing outside tmux and does not require changing your Stream Deck
 profile. To disable it, remove the installed extension and restart Gentle
 Shell. If using a nonstandard plugin location or Node binary, set
 `AI_DECK_PLUGIN_ROOT` or `AI_DECK_NODE` before starting Gentle Shell.
-
-### OpenCode adapter
-
-The bundled OpenCode adapter maps host session events to one aggregate
-lifecycle per tmux pane. Busy/retry activity becomes `started`/`running`
-(amber); the pane becomes `completed` (blue) or `error` (red) only when no
-tracked root or child session remains active. Its stable version-4 UUID is
-derived from the tmux session and pane identifiers, so native root/child
-sessions share one key and older per-native-session entries converge after
-the next pane event.
-
-Install it after building:
-
-```bash
-npm run build && npm run install:opencode
-```
-
-This copies `bin/opencode-plugin.js` to
-`~/.config/opencode/plugins/ai-deck.js`. The adapter resolves its tmux
-pane from the `TMUX_PANE` environment and emits nothing when OpenCode
-runs outside tmux. Overrides: `AI_DECK_PLUGIN_ROOT` (plugin directory)
-and `AI_DECK_NODE` (Node binary used to spawn the emit CLI).
 
 ### Claude Code adapter
 
@@ -442,7 +412,7 @@ Rejected events never touch persisted state.
 | `npm run verify` | Full CI gate (tests + typecheck + audit + pack + smoke). |
 | `npm test` | Vitest suite only. |
 | `npm run typecheck` | Strict `tsc --noEmit`. |
-| `npm run release -- current` | Publish the prepared first release through the signed canonical flow. |
+| `RELEASE_NOTES_FILE=<path> npm run release -- current` | Publish the current version with explicitly selected notes through the signed release flow. |
 
 Maintainers should read [`docs/releasing.md`](docs/releasing.md) before
 publishing or incrementing a release.
