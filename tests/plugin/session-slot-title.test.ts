@@ -18,7 +18,7 @@ function eventFor(pane: string, sessionId: string, timestamp: number): LocalAgen
   return {
     schemaVersion: 1,
     eventId: `de305d54-75b4-431b-adb2-eb6b9e5460${timestamp.toString().padStart(2, "0")}`,
-    source: "opencode",
+    source: "codex",
     sessionId,
     sequence: timestamp,
     timestamp,
@@ -168,10 +168,10 @@ describe("resolveSlotTitles", () => {
 
   it("only groups duplicates by identical resolved names", () => {
     const state = stateWith([["%1", SESSION_ID, 1], ["%7", SESSION_ID_B, 2]]);
-    const names = new Map([["%1", "kimi"], ["%7", "opencode"]]);
+    const names = new Map([["%1", "kimi"], ["%7", "aider"]]);
     const titles = resolveSlotTitles(state, (pane) => names.get(pane));
 
     expect(titles[0]).toBe("kimi");
-    expect(titles[1]).toBe("opencode");
+    expect(titles[1]).toBe("aider");
   });
 });

@@ -42,7 +42,7 @@ function status(lifecycle: SessionStatus = SESSION_STATUS.STARTED, timestamp = 1
   return {
     schemaVersion: 1,
     eventId: `de305d54-75b4-431b-adb2-eb6b9e5460${timestamp.toString().padStart(2, "0")}`,
-    source: "opencode",
+    source: "codex",
     sessionId,
     sequence: timestamp,
     timestamp,

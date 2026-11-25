@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { parseAdapterEmitArgs } from "../../src/cli/adapter-emit";
 import { PROHIBITED_CONTENT_FIELD, isLocalAgentStatusEvent, parseLocalAgentStatusEvent } from "../../src/core/events";
 import {
   LOCAL_AGENT_EVENT_LIMITS,
@@ -23,6 +24,7 @@ const INVALID_EVENT_VALUES = [
   ["schemaVersion", 2],
   ["source", "unknown"],
   ["source", "tmux"],
+  ["source", "opencode"],
   ["lifecycle", "idle"],
   ["target", null],
   ["target", "not-a-target"],
@@ -94,6 +96,17 @@ describe("local agent status event privacy boundary", () => {
     expect(parsed).toMatchObject({ schemaVersion: LOCAL_AGENT_EVENT_LIMITS.SCHEMA_VERSION, source, lifecycle });
     expect(Object.hasOwn(parsed, "sequence")).toBe(sequence);
     expect(Object.hasOwn(parsed.target, "tmuxWindow")).toBe(window);
+  });
+
+  it("no longer exposes OpenCode as an event source, publicly or through the emit CLI", () => {
+    expect(Object.values(LOCAL_AGENT_TOOL)).not.toContain("opencode");
+    expect(isLocalAgentStatusEvent(event("opencode" as LocalAgentTool))).toBe(false);
+    const argv = [
+      "--source", "opencode", "--session-id", SESSION_ID, "--lifecycle", "running", "--pane-id", "%2", "--session", "$0",
+    ];
+    const clock = { now: () => 1 };
+    expect(parseAdapterEmitArgs(argv, clock).kind).toBe("invalid");
+    expect(parseAdapterEmitArgs(argv.map((value) => value === "opencode" ? "codex" : value), clock).kind).toBe("event");
   });
 
   it("documents every prohibited contract field", () => {

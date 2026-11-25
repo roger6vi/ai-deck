@@ -44,7 +44,7 @@ function status(lifecycle: SessionStatus = SESSION_STATUS.STARTED, timestamp = 1
   return {
     schemaVersion: 1,
     eventId: `de305d54-75b4-431b-adb2-eb6b9e5460${timestamp.toString().padStart(2, "0")}`,
-    source: "opencode",
+    source: "codex",
     sessionId,
     sequence: timestamp,
     timestamp,
@@ -97,7 +97,7 @@ describe("session slot property inspector", () => {
 
     const sessions = lastSessions(inspector);
     expect(sessions).toHaveLength(1);
-    expect(sessions[0]).toMatchObject({ sessionId: SESSION_ID, slotIndex: 0, source: "opencode", lifecycle: "started" });
+    expect(sessions[0]).toMatchObject({ sessionId: SESSION_ID, slotIndex: 0, source: "codex", lifecycle: "started" });
   });
 
   it("answers a session list request, so a page that connected after the push still fills its dropdown", async () => {

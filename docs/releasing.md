@@ -1,18 +1,10 @@
 # Publish a signed release
 
-The canonical release command validates a clean repository, runs the project gates, synchronizes every version source, builds both downloadable assets, and publishes a signed commit, signed tag, and GitHub release.
+The canonical release command validates a clean repository, runs the project gates, synchronizes every version source, builds the downloadable installer, and publishes a signed commit, signed tag, and GitHub release.
 
-## First release
+## Select a version and release notes
 
-Run this only after the release-preparation changes are reviewed and committed on `main`:
-
-```bash
-npm run release -- current
-```
-
-`current` publishes the existing package version as `v0.1.0`. It does not bump to `v0.1.1`.
-
-## Later releases
+Run this only after release-preparation changes are reviewed and committed on `main`. Use `current` to publish the existing package version without a bump. Every release requires explicit notes for the version and assets being published; do not reuse archived notes for a different package.
 
 Prepare a tracked notes file whose first line is exactly `## vX.Y.Z`, point `RELEASE_NOTES_FILE` at it, and select the increment:
 
@@ -42,7 +34,7 @@ The script never prints signing keys or GitHub credentials, never force-pushes, 
 2. Run tests, typecheck, and the production dependency audit before changing versions or building.
 3. Synchronize package, lockfile, Stream Deck, Claude, Codex, and marketplace versions.
 4. Update `CHANGELOG.md`, build, regenerate project assets, and run profile/plugin validation.
-5. Package `dist/roger6vi.ai-deck.streamDeckPlugin`, validate its exact content allowlist, run the bounded runtime smoke gate, and copy the exact built OpenCode bundle to `dist/ai-deck-opencode.js`.
-6. Stage and byte-check both assets, create the signed Conventional Commit and signed tag, push without force, and create the GitHub release with both assets.
+5. Package `dist/roger6vi.ai-deck.streamDeckPlugin`, validate its exact content allowlist, and run the bounded runtime smoke gate.
+6. Stage and byte-check the installer, create the signed Conventional Commit and signed tag, push without force, and create the GitHub release with the installer.
 
 If any command fails before the commit, inspect the working tree and generated output before retrying. Do not bypass a failed gate or move a published tag as part of the normal flow.

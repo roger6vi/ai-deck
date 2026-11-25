@@ -73,7 +73,7 @@ function status(options: EventOptions = {}): LocalAgentStatusEvent {
   return {
     schemaVersion: 1,
     eventId: options.eventId ?? `de305d54-75b4-431b-adb2-eb6b9e5460${timestamp.toString().padStart(2, "0")}`,
-    source: "opencode",
+    source: "codex",
     sessionId: options.sessionId ?? SESSION_IDS[0],
     sequence: timestamp,
     timestamp,
@@ -291,7 +291,7 @@ describe("session slot Stream Deck integration", () => {
     expect(sendToPropertyInspector).toHaveBeenCalledTimes(inspectorPushCount);
     expect(sendToPropertyInspector.mock.calls.at(-1)?.[0]).toMatchObject({
       type: "sessions",
-      sessions: SESSION_IDS.map((sessionId, slotIndex) => ({ sessionId, slotIndex, source: "opencode", lifecycle: "running" })),
+      sessions: SESSION_IDS.map((sessionId, slotIndex) => ({ sessionId, slotIndex, source: "codex", lifecycle: "running" })),
     });
 
     await controller.handleStatusEvent(status({

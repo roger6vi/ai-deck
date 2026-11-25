@@ -131,23 +131,16 @@ npm run check:package
 npm run smoke:runtime
 
 STREAM_DECK_ASSET="dist/roger6vi.ai-deck.streamDeckPlugin"
-OPENCODE_ASSET="dist/ai-deck-opencode.js"
-BUILT_OPENCODE_ADAPTER="roger6vi.ai-deck.sdPlugin/bin/opencode-plugin.js"
 [[ -s "$STREAM_DECK_ASSET" ]] || fail "Stream Deck installer was not produced."
-[[ -s "$BUILT_OPENCODE_ADAPTER" ]] || fail "built OpenCode adapter was not produced."
-cp "$BUILT_OPENCODE_ADAPTER" "$OPENCODE_ASSET"
-cmp --silent "$BUILT_OPENCODE_ADAPTER" "$OPENCODE_ASSET" || fail "standalone OpenCode adapter does not match the built bundle."
 
 # The tree was clean at preflight, so tracked build changes are release-generated.
 git add -u
 git add -- package.json package-lock.json roger6vi.ai-deck.sdPlugin/manifest.json \
   claude-code-plugin/.claude-plugin/plugin.json codex-plugin/.codex-plugin/plugin.json \
   .claude-plugin/marketplace.json CHANGELOG.md
-git add -f -- "$STREAM_DECK_ASSET" "$OPENCODE_ASSET"
+git add -f -- "$STREAM_DECK_ASSET"
 
-for asset in "$STREAM_DECK_ASSET" "$OPENCODE_ASSET"; do
-  [[ "$(git hash-object "$asset")" == "$(git rev-parse ":$asset")" ]] || fail "$asset is not staged byte-for-byte."
-done
+[[ "$(git hash-object "$STREAM_DECK_ASSET")" == "$(git rev-parse ":$STREAM_DECK_ASSET")" ]] || fail "$STREAM_DECK_ASSET is not staged byte-for-byte."
 git diff --cached --check
 [[ -n "$(git diff --cached --name-only)" ]] || fail "the release produced no staged changes."
 
@@ -156,6 +149,6 @@ git tag -s "$TAG" -m "$TAG"
 git push origin HEAD:main
 git push origin "$TAG"
 gh release create "$TAG" --title "$TAG" --notes-file "$RELEASE_NOTES_FILE" --latest \
-  "$STREAM_DECK_ASSET" "$OPENCODE_ASSET"
+  "$STREAM_DECK_ASSET"
 
-printf 'Published %s with both installable assets.\n' "$TAG"
+printf 'Published %s with the installable plugin asset.\n' "$TAG"
