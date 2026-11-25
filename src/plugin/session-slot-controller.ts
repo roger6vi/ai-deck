@@ -232,9 +232,12 @@ export class SessionSlotController {
       if (panes === undefined || !this.#paneDiscoveryEnabled || generation !== this.#paneDiscoveryGeneration) return;
       const previous = this.#state;
       this.#state = reduceSessionState(previous, { kind: SESSION_REDUCER_ACTION.PANE_DISCOVERY, panes });
-      if (this.#state === previous) return;
+      // Window names live outside the reducer state, so they must be re-read
+      // even when no pane appeared or vanished: a tmux window rename is
+      // invisible to the pane enumeration itself.
       await this.#resolveWindowNames(this.#state);
       await this.refresh(this.options.clock.now());
+      if (this.#state === previous) return;
       this.#notifyStateChanged(previous);
     } catch {
       // tmux failures must not clear keys or stop future discovery.

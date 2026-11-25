@@ -32,6 +32,18 @@ export interface TmuxWindowNameResolverOptions {
 
 const GLOBAL_CONTROL_CHARACTER_PATTERN = new RegExp(CONTROL_CHARACTER_PATTERN.source, "g");
 
+// macOS keyboards emit decomposed text (NFD): one visible accented character
+// arrives as a base character plus a combining mark, and a UTF-16 slice would
+// count each mark separately or cut one away from its base. Names are
+// composed to NFC and measured in graphemes, so every visible character
+// counts as one and no accent is ever split from its letter.
+const GRAPHEME_SEGMENTER = new Intl.Segmenter("und", { granularity: "grapheme" });
+
+function limitToGraphemes(value: string, maxCharacters: number): string {
+  const graphemes = [...GRAPHEME_SEGMENTER.segment(value)].map((part) => part.segment);
+  return graphemes.slice(0, maxCharacters).join("");
+}
+
 // tmux prints control characters as "_" when a client outside tmux asks for
 // them (display-message -p), so a name cannot cross it with real line breaks.
 // It is stored on one line with this separator instead, and split on the way
@@ -41,15 +53,15 @@ const LINE_SEPARATOR = "|";
 function sanitizeLines(raw: string, maxLineLength: number): string | undefined {
   const lines = raw
     .split(/\r?\n|\|/)
-    .map((line) => line.replaceAll(GLOBAL_CONTROL_CHARACTER_PATTERN, "").trim().slice(0, maxLineLength).trim())
+    .map((line) => limitToGraphemes(line.replaceAll(GLOBAL_CONTROL_CHARACTER_PATTERN, "").normalize("NFC").trim(), maxLineLength).trim())
     .filter((line) => line.length > 0)
     .slice(0, SESSION_SLOT_TITLE_LIMITS.MAX_LINES);
   return lines.length === 0 ? undefined : lines.join("\n");
 }
 
 function sanitizeWindowName(raw: string): string | undefined {
-  const cleaned = raw.replaceAll(GLOBAL_CONTROL_CHARACTER_PATTERN, "").trim();
-  return cleaned.length === 0 ? undefined : cleaned.slice(0, SESSION_SLOT_TITLE_LIMITS.MAX_NAME_LENGTH);
+  const cleaned = raw.replaceAll(GLOBAL_CONTROL_CHARACTER_PATTERN, "").normalize("NFC").trim();
+  return cleaned.length === 0 ? undefined : limitToGraphemes(cleaned, SESSION_SLOT_TITLE_LIMITS.MAX_NAME_LENGTH);
 }
 
 // tmux parses an argument starting with "-" as a flag, and does not accept
@@ -108,6 +120,6 @@ export function resolveSlotTitles(
     // name it is unreadable at key size.
     if ((occurrences.get(name) ?? 0) < 2) return name;
     const paneId = state.slots[index]?.target?.tmuxPaneId;
-    return paneId === undefined ? name : `${name}\n·${paneId}`;
+    return paneId === undefined ? name : `${name}\n_${paneId}`;
   });
 }
