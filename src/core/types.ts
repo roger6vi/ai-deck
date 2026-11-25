@@ -2,6 +2,7 @@ export const LOCAL_AGENT_TOOL = {
   CODEX: "codex",
   OPENCODE: "opencode",
   CLAUDE: "claude",
+  PI: "pi",
   /**
    * Not an agent and never emitted by an adapter: the plugin's own baseline
    * pane discovery marks a live tmux pane with it, so presence can be shown
