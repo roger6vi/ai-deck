@@ -24,7 +24,7 @@ export const ADAPTER_EMIT_OUTCOME_MESSAGE = {
   LOCAL_ERROR: "ai-deck: local-error",
 } as const;
 
-const USAGE = "usage: ai-deck-emit --source <codex|opencode|claude> --session-id <uuid> --lifecycle <started|running|completed|error|pane-disappeared> --pane-id %<N> --session $<N> [--event-id <uuid>] [--window @<N>] [--sequence <n>] [--timestamp <ms>]";
+const USAGE = "usage: ai-deck-emit --source <codex|opencode|claude|pi> --session-id <uuid> --lifecycle <started|running|completed|error|pane-disappeared> --pane-id %<N> --session $<N> [--event-id <uuid>] [--window @<N>] [--sequence <n>] [--timestamp <ms>]";
 
 export const ADAPTER_EMIT_PLUGIN_ROOT_MISSING_MESSAGE = "ai-deck: AI_DECK_PLUGIN_ROOT is not set";
 

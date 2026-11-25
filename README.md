@@ -1,7 +1,7 @@
 # AI Deck
 
 A local-only Stream Deck plugin that surfaces the status of your active
-coding-agent sessions (Codex, OpenCode, Claude) as color-coded keys on
+coding-agent sessions (Gentle Shell, Codex, OpenCode, Claude) as color-coded keys on
 the physical device.
 
 - **Local per Mac.** No cloud relay, no cross-machine sync, no telemetry.
@@ -304,6 +304,34 @@ AI_DECK_PLUGIN_ROOT=/absolute/path/to/roger6vi.ai-deck.sdPlugin \
     --source opencode --session-id "$SESSION_UUID" \
     --lifecycle started --pane-id "%1" --session '$0'
 ```
+
+### Gentle Shell adapter
+
+Without the optional extension, ai-deck only detects the tmux pane and shows
+it in green. To track Gentle Shell activity, build and link the current
+Stream Deck plugin (older builds reject the `pi` event source), then install
+the standalone extension from this checkout:
+
+```bash
+npm run build
+# If the current checkout is not already linked in Stream Deck:
+npm exec -- streamdeck link roger6vi.ai-deck.sdPlugin
+npm run restart:plugin
+
+pi_extensions="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/extensions"
+mkdir -p "$pi_extensions"
+install -m 0644 pi-extension/ai-deck.ts "$pi_extensions/ai-deck.ts"
+```
+
+Restart Gentle Shell in a tmux pane. Its existing key turns amber when an
+agent run starts and blue when Gentle Shell is ready for input again, after
+any internal retries or queued follow-ups settle. A physical key press
+acknowledges blue as green, just like other adapters. The extension sends
+only status and tmux metadata through the bundled `bin/adapter-emit.js`.
+It does nothing outside tmux and does not require changing your Stream Deck
+profile. To disable it, remove the installed extension and restart Gentle
+Shell. If using a nonstandard plugin location or Node binary, set
+`AI_DECK_PLUGIN_ROOT` or `AI_DECK_NODE` before starting Gentle Shell.
 
 ### OpenCode adapter
 
