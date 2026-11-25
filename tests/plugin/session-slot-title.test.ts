@@ -7,6 +7,7 @@ import {
   createTmuxPaneNamer,
   createTmuxWindowNameResolver,
   resolveSlotTitles,
+  sanitizePaneName,
   SESSION_SLOT_TITLE_LIMITS,
 } from "../../src/plugin/session-slot-title";
 
@@ -161,9 +162,9 @@ describe("resolveSlotTitles", () => {
     const state = stateWith([["%1", SESSION_ID, 1], ["%7", SESSION_ID_B, 2], ["%9", SESSION_ID_C, 3]]);
     const titles = resolveSlotTitles(state, () => "kimi");
 
-    expect(titles[0]).toBe("kimi\n·%1");
-    expect(titles[1]).toBe("kimi\n·%7");
-    expect(titles[2]).toBe("kimi\n·%9");
+    expect(titles[0]).toBe("kimi\n_%1");
+    expect(titles[1]).toBe("kimi\n_%7");
+    expect(titles[2]).toBe("kimi\n_%9");
   });
 
   it("only groups duplicates by identical resolved names", () => {
@@ -173,5 +174,23 @@ describe("resolveSlotTitles", () => {
 
     expect(titles[0]).toBe("kimi");
     expect(titles[1]).toBe("aider");
+  });
+});
+
+describe("sanitizePaneName with accented characters", () => {
+  // macOS keyboards emit decomposed text (NFD): "á" is "a" + U+0301.
+  const nfd = (value: string): string => value.normalize("NFD");
+
+  it("counts each accented character as one visible character, not two", () => {
+    expect(sanitizePaneName(nfd("árbolñandúí"))).toBe("árbolñandú");
+  });
+
+  it("never splits a character from its accent at the limit", () => {
+    expect(sanitizePaneName(nfd("aaaaaaaaañ"))).toBe("aaaaaaaaañ");
+  });
+
+  it("stores accented names in composed form so identical names compare equal", () => {
+    expect(sanitizePaneName(nfd("cañón"))).toBe("cañón");
+    expect(sanitizePaneName("cañón")).toBe("cañón");
   });
 });

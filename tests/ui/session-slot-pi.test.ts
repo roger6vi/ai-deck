@@ -47,6 +47,12 @@ describe("session slot property inspector page", () => {
     expect(html).toContain("NAME_MAX_LINE_LENGTH = 10");
   });
 
+  it("limits names by visible characters, so accents are neither eaten nor split", async () => {
+    const html = await readFile(PI_PATH, "utf8");
+    expect(html).toContain('granularity: "grapheme"');
+    expect(html).toContain('.normalize("NFC")');
+  });
+
   it("renders sessions payloads and sends set-slot-session selections", async () => {
     const html = await readFile(PI_PATH, "utf8");
     expect(html).toContain('"sendToPropertyInspector"');
