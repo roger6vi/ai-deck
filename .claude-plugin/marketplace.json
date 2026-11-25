@@ -9,7 +9,7 @@
     {
       "name": "ai-deck-claude",
       "description": "Reports Claude Code session lifecycle to the AI Deck Stream Deck plugin running on the same Mac",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "author": {
         "name": "roger6vi"
       },

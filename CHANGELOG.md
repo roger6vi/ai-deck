@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.2.0
+
+### Summary
+
+AI Deck now shows when Gentle Shell is working or has an unread response, and keeps tmux session titles readable and up to date.
+
+### Features
+
+- Install the optional Gentle Shell extension to turn a key amber on start and blue when the agent is ready for input again (#44).
+- Discover live tmux panes even without an agent extension, and navigate back to their Ghostty terminal.
+
+### Fixes
+
+- Preserve accented tmux names, distinguish duplicate titles, and refresh renamed windows on discovery.
+- Keep unread responses unread when navigation fails.
+
+### Breaking changes
+
+- The Stream Deck plugin ID is now `roger6vi.ai-deck`. Export and back up existing profiles, migrate them with `npm run migrate:profile`, then install the new plugin and import the migrated profiles. See the README for the full procedure.
+- The OpenCode adapter and its standalone download have been removed (#45). Existing entries can still appear as live tmux panes, but no longer receive OpenCode lifecycle updates.
+
+### Installation
+
+Open `roger6vi.ai-deck.streamDeckPlugin` from the release assets. To enable Gentle Shell status, follow the README instructions to install `pi-extension/ai-deck.ts` and reload Gentle Shell inside tmux.
+
 ## Unreleased
 
 ### Changes
